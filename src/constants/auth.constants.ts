@@ -1,0 +1,15 @@
+export const AUTH_CONSTANTS = {
+  BCRYPT_SALT_ROUNDS: 12,
+  PASSWORD_MIN_LENGTH: 8,
+  PASSWORD_MAX_LENGTH: 128,
+  AUTHORIZATION_HEADER: 'Authorization',
+  BEARER_PREFIX: 'Bearer ',
+} as const;
+
+export const ROLE_HIERARCHY = {
+  SUPER_ADMIN: 5,
+  SCHOOL_ADMIN: 4,
+  DATA_ENTRY_ADMIN: 3,
+  TEACHER: 2,
+  PARENT: 1,
+} as const;

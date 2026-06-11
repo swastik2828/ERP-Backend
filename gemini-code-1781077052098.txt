@@ -1,0 +1,30 @@
+.
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+├── package.json
+├── .env
+├── tsconfig.json
+├── prisma/
+│   └── schema.prisma
+    |── migrations/
+└── src/
+    ├── config/
+    │   └── env.ts
+    ├── database/
+    │   └── prisma.ts
+    ├── constants/
+    ├── errors/
+    ├── types/
+    ├── utils/
+    ├── middlewares/
+    └── modules/
+        └── auth/
+            ├── controllers/
+            ├── dto/
+            ├── repositories/
+            ├── routes/
+            ├── services/
+            └── validators/
+    |── app.ts
+    |── server.ts
