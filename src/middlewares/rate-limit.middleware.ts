@@ -18,13 +18,13 @@ export const globalRateLimiter = rateLimit({
 // Strict Rate Limiter for Sensitive Endpoints (Login, Password Reset)
 // Mitigates Dictionary / Brute-Force Attacks
 export const authStrictRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 failed/successful login requests per `window`
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 5, // 5 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true, // Only count failed attempts towards the strict limit
+  skipSuccessfulRequests: true,
   handler: (_req: Request, _res: Response, next: NextFunction) => {
-    next(new AppError('Too many authentication attempts from this IP, please try again after 15 minutes.', 429, 'BRUTE_FORCE_DETECTED'));
+    next(new AppError('Too many authentication attempts from this IP, please try again after 1 minute.', 429, 'RATE_LIMIT_EXCEEDED'));
   },
 });
 
@@ -38,3 +38,5 @@ export const passwordResetRateLimiter = rateLimit({
     next(new AppError('Too many password reset requests. Please check your email or try again later.', 429, 'RESET_LIMIT_EXCEEDED'));
   },
 });
+
+// Update the auth rate limiter to match PRD: 5 requests per minute per IP

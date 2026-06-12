@@ -2,6 +2,7 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import authRoutes from './modules/auth/routes/auth.routes';
+import userRoutes from './modules/auth/routes/users.routes'; // <-- ADDED IMPORT
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
 
@@ -13,20 +14,21 @@ app.use(cors()); // Enables Cross-Origin Resource Sharing
 app.use(express.json()); // Parses incoming JSON payloads
 app.use(express.urlencoded({ extended: true }));
 
-app.get("/", (req, res) => {
+// API Routes
+app.get("/", (_req, res) => { // <-- ADDED UNDERSCORE TO _req
   res.status(200).json({
     success: true,
     message: "School ERP Backend Running"
   });
 });
-// API Routes
+
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);
 
 // Global Error Handler (Must be the last middleware)
 app.use(globalErrorHandler);
-
 
 export default app;

@@ -15,6 +15,12 @@ enum Role {
   PARENT
 }
 
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
 model School {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @db.VarChar(255)
@@ -36,10 +42,17 @@ model User {
   phone        String?   @db.VarChar(20)
   passwordHash String    @map("password_hash") @db.VarChar(255)
   role         Role      @default(PARENT)
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+ accountStatus             AccountStatus @default(ACTIVE) @map("account_status")
+  isActive                  Boolean       @default(true) @map("is_active")
+  failedLoginAttempts       Int           @default(0) @map("failed_login_attempts")
+  lockedUntil               DateTime?     @map("locked_until")
+  temporaryPasswordRequired Boolean       @default(true) @map("temporary_password_required")
+  createdBy                 String?       @map("created_by") @db.Uuid
+  updatedBy                 String?       @map("updated_by") @db.Uuid
+  
+  lastLoginAt               DateTime?     @map("last_login_at")
+  createdAt                 DateTime      @default(now()) @map("created_at")
+  updatedAt                 DateTime      @updatedAt @map("updated_at")
 
   school              School?               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens       RefreshToken[]
@@ -49,6 +62,21 @@ model User {
   @@index([schoolId])
   @@index([email])
   @@index([isActive])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(255)
+  entityType String   @map("entity_type") @db.VarChar(255)
+  entityId   String?  @map("entity_id") @db.Uuid
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  timestamp  DateTime @default(now())
+
+  @@map("audit_logs")
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType])
 }
 
 model RefreshToken {

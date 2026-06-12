@@ -11,6 +11,7 @@ import {
   hashToken,
 } from '../../../utils/jwt.util';
 import { TokenResponse } from '../../../types/auth.types';
+import prisma from '../../../database/prisma'; // <-- ADDED PRISMA IMPORT
 
 export class AuthService {
   constructor(
@@ -21,24 +22,54 @@ export class AuthService {
   /**
    * Authenticates a user and generates a new session footprint.
    */
-  async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<TokenResponse> {
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<TokenResponse | any> {
     const user = await this.userRepository.findByEmail(dto.email);
 
-    if (!user) {
-      throw new InvalidCredentialsError();
+    if (!user) throw new InvalidCredentialsError();
+
+    // Check Account Status & Lockout
+    if (user.accountStatus === 'INACTIVE' || !user.isActive) {
+      throw new ForbiddenError('Account is inactive.');
     }
 
-    if (!user.isActive) {
-      throw new ForbiddenError('Account has been deactivated. Please contact your school administrator.');
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new ForbiddenError(`Account locked. Try again after ${user.lockedUntil.toISOString()}`);
     }
 
     const isPasswordValid = await comparePassword(dto.password, user.passwordHash);
 
     if (!isPasswordValid) {
+      // Increment failed attempts and lock if >= 5
+      const attempts = user.failedLoginAttempts + 1;
+      const lockedUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      const status = attempts >= 5 ? 'LOCKED' : user.accountStatus;
+      
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: attempts, lockedUntil, accountStatus: status }
+      });
       throw new InvalidCredentialsError();
     }
 
-    await this.userRepository.updateLastLogin(user.id);
+    // Reset failed attempts on success
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null, accountStatus: 'ACTIVE', lastLoginAt: new Date() }
+    });
+
+    // PRD Requirement: Force password change on first login
+    if (user.temporaryPasswordRequired) {
+      return { 
+        requiresPasswordChange: true, 
+        message: "Please change your temporary password to continue.",
+        tempToken: generateAccessToken({ sub: user.id, email: user.email, role: user.role, schoolId: user.schoolId }) 
+      };
+    }
+
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: { actorId: user.id, action: 'LOGIN', entityType: 'USER', entityId: user.id, ipAddress }
+    });
 
     return this.generateSession(user.id, user.email, user.role, user.schoolId, ipAddress, userAgent);
   }
@@ -58,9 +89,6 @@ export class AuthService {
     }
 
     // Refresh Token Reuse Detection:
-    // If the token exists but is marked as revoked, a malicious actor (or desynced client) 
-    // is attempting to use an already-rotated token.
-    // ACTION: Revoke ALL sessions for this user immediately to secure the account.
     if (storedToken.revoked) {
       await this.refreshTokenRepository.revokeAllForUser(decoded.sub);
       throw new UnauthorizedError('Security Alert: Token reuse detected. All active sessions have been terminated.');
@@ -114,9 +142,8 @@ export class AuthService {
       tokenId,
     });
 
-    // We never store the raw refresh token, only its SHA-256 hash.
     const tokenHash = hashToken(refreshToken);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 Days alignment with env default
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); 
 
     await this.refreshTokenRepository.create({
       userId,
