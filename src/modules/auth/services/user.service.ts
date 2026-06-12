@@ -55,7 +55,7 @@ export class UserService {
       userData.school = {
         create: {
           name: data.newSchool.name,
-          schoolCode: data.newSchool.schoolCode
+          code: data.newSchool.schoolCode 
         }
       };
     } else if (data.schoolId) {
