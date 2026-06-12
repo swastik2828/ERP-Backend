@@ -34,7 +34,10 @@ export class UserRepository {
   async updatePassword(id: string, passwordHash: string): Promise<User> {
     return prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: { 
+        passwordHash,
+        temporaryPasswordRequired: false
+      },
     });
   }
 
