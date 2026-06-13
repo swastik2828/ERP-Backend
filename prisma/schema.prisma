@@ -7,12 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==========================================
+// ENUMS
+// ==========================================
+
 enum Role {
   SUPER_ADMIN
   SCHOOL_ADMIN
   DATA_ENTRY_ADMIN
   TEACHER
   PARENT
+  STUDENT // Added for future student portal access
 }
 
 enum AccountStatus {
@@ -21,6 +26,27 @@ enum AccountStatus {
   LOCKED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  O_POS
+  O_NEG
+  AB_POS
+  AB_NEG
+}
+
+// ==========================================
+// CORE TENANT (SCHOOL)
+// ==========================================
+
 model School {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @db.VarChar(255)
@@ -28,42 +54,57 @@ model School {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users     User[]
+  // Relationships
+  users           User[]
+  students        Student[]
+  parents         Parent[]
+  academicClasses AcademicClass[]
 
-  @@map("schools")
   @@index([code])
+  @@map("schools")
 }
 
+// ==========================================
+// IDENTITY & AUTHENTICATION MODULE (IdP)
+// ==========================================
+
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  schoolId     String?   @map("school_id") @db.Uuid
-  fullName     String    @map("full_name") @db.VarChar(255)
-  email        String    @unique @db.VarChar(255)
-  phone        String?   @db.VarChar(20)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  role         Role      @default(PARENT)
- accountStatus             AccountStatus @default(ACTIVE) @map("account_status")
+  id                        String        @id @default(uuid()) @db.Uuid
+  schoolId                  String?       @map("school_id") @db.Uuid
+  email                     String        @unique @db.VarChar(255)
+  passwordHash              String        @map("password_hash") @db.VarChar(255)
+  role                      Role          @default(PARENT)
+  accountStatus             AccountStatus @default(ACTIVE) @map("account_status")
   isActive                  Boolean       @default(true) @map("is_active")
   failedLoginAttempts       Int           @default(0) @map("failed_login_attempts")
   lockedUntil               DateTime?     @map("locked_until")
   temporaryPasswordRequired Boolean       @default(true) @map("temporary_password_required")
-  createdBy                 String?       @map("created_by") @db.Uuid
-  updatedBy                 String?       @map("updated_by") @db.Uuid
-  
-  lastLoginAt               DateTime?     @map("last_login_at")
-  createdAt                 DateTime      @default(now()) @map("created_at")
-  updatedAt                 DateTime      @updatedAt @map("updated_at")
 
-  school              School?               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  // Basic Profile (Kept minimal in Auth)
+  fullName String  @map("full_name") @db.VarChar(255)
+  phone    String? @db.VarChar(20)
+
+  // Audit Fields
+  createdBy   String?   @map("created_by") @db.Uuid
+  updatedBy   String?   @map("updated_by") @db.Uuid
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  school              School?              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  parentProfile       Parent? // 1-to-1 mapping if the user is a Parent
+  classesHandled      AcademicClass[] // 1-to-N mapping if the user is a Teacher
 
-  @@map("users")
   @@index([schoolId])
   @@index([email])
   @@index([isActive])
+  @@map("users")
 }
 
+// [Audit Log, RefreshToken, PasswordResetToken remain identical to your current schema...]
 model AuditLog {
   id         String   @id @default(uuid()) @db.Uuid
   actorId    String?  @map("actor_id") @db.Uuid
@@ -73,40 +114,150 @@ model AuditLog {
   ipAddress  String?  @map("ip_address") @db.VarChar(45)
   timestamp  DateTime @default(now())
 
-  @@map("audit_logs")
   @@index([actorId])
   @@index([action])
   @@index([entityType])
+  @@map("audit_logs")
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  tokenHash  String   @unique @map("token_hash") @db.VarChar(255)
-  expiresAt  DateTime @map("expires_at")
-  revoked    Boolean  @default(false)
-  userAgent  String?  @map("user_agent") @db.Text
-  ipAddress  String?  @map("ip_address") @db.VarChar(45)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  userAgent String?  @map("user_agent") @db.Text
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("refresh_tokens")
   @@index([userId])
   @@index([tokenHash])
+  @@map("refresh_tokens")
 }
 
 model PasswordResetToken {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  tokenHash  String   @unique @map("token_hash") @db.VarChar(255)
-  expiresAt  DateTime @map("expires_at")
-  used       Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("password_reset_tokens")
   @@index([userId])
   @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+// ==========================================
+// USER DEMOGRAPHICS & ERP MODULE
+// ==========================================
+
+model Address {
+  id           String  @id @default(uuid()) @db.Uuid
+  addressLine1 String  @map("address_line_1") @db.VarChar(255)
+  addressLine2 String? @map("address_line_2") @db.VarChar(255)
+  city         String  @db.VarChar(100)
+  state        String  @db.VarChar(100)
+  zipCode      String  @map("zip_code") @db.VarChar(20)
+  country      String  @default("India") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  parents  Parent[]
+  students Student[]
+
+  @@map("addresses")
+}
+
+model Parent {
+  id        String  @id @default(uuid()) @db.Uuid
+  schoolId  String  @map("school_id") @db.Uuid
+  userId    String  @unique @map("user_id") @db.Uuid // Links to Auth User
+  addressId String? @map("address_id") @db.Uuid
+
+  firstName      String  @map("first_name") @db.VarChar(100)
+  lastName       String  @map("last_name") @db.VarChar(100)
+  primaryPhone   String  @map("primary_phone") @db.VarChar(20)
+  alternatePhone String? @map("alternate_phone") @db.VarChar(20)
+  occupation     String? @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  school   School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address  Address?  @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  children Student[] // One parent can have multiple students
+
+  @@index([schoolId])
+  @@map("parents")
+}
+
+model AcademicClass {
+  id             String  @id @default(uuid()) @db.Uuid
+  schoolId       String  @map("school_id") @db.Uuid
+  classTeacherId String? @map("class_teacher_id") @db.Uuid // Links to User with TEACHER role
+
+  name     String @db.VarChar(50) // E.g., "Grade 10"
+  section  String @db.VarChar(10) // E.g., "A"
+  capacity Int    @default(40)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  school       School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classTeacher User?     @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
+  students     Student[]
+
+  @@unique([schoolId, name, section]) // Prevents duplicate class sections in the same school
+  @@index([schoolId])
+  @@map("academic_classes")
+}
+
+model Student {
+  id        String  @id @default(uuid()) @db.Uuid
+  schoolId  String  @map("school_id") @db.Uuid
+  parentId  String  @map("parent_id") @db.Uuid
+  classId   String  @map("class_id") @db.Uuid // Restored Relational UUID
+  addressId String? @map("address_id") @db.Uuid
+
+  enrollmentNumber String      @unique @map("enrollment_number") @db.VarChar(50)
+  firstName        String      @map("first_name") @db.VarChar(100)
+  lastName         String      @map("last_name") @db.VarChar(100)
+  dateOfBirth      DateTime    @map("date_of_birth") @db.Date
+  gender           Gender
+  bloodGroup       BloodGroup? @map("blood_group")
+  medicalBrief     String?     @map("medical_brief") @db.Text
+
+  // Indian School Standards
+  fatherName   String  @map("father_name") @db.VarChar(100)
+  motherName   String  @map("mother_name") @db.VarChar(100)
+  aadharNumber String? @unique @map("aadhar_number") @db.VarChar(12)
+
+  admissionDate DateTime @default(now()) @map("admission_date") @db.Date
+  isActive      Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  parent        Parent        @relation(fields: [parentId], references: [id], onDelete: Restrict)
+  academicClass AcademicClass @relation(fields: [classId], references: [id], onDelete: Restrict)
+  address       Address?      @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([classId])
+  @@index([parentId])
+  @@index([enrollmentNumber])
+  @@index([aadharNumber])
+  @@map("students")
 }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 // Repositories
-import { UserRepository } from '../repositories/user.repository';
+import { AuthUserRepository } from '../repositories/auth-user.repository';
 import { RefreshTokenRepository } from '../repositories/refresh-token.repository';
 import { PasswordResetTokenRepository } from '../repositories/password-reset-token.repository';
 
@@ -18,25 +18,20 @@ import { SessionController } from '../controllers/session.controller';
 import { validateRequest } from '../../../middlewares/validation.middleware';
 import { requireAuth } from '../../../middlewares/auth.middleware';
 import {
-  loginSchema,
-  refreshTokenSchema,
-  changePasswordSchema,
-  resetPasswordRequestSchema,
-  resetPasswordSchema,
+  loginSchema, refreshTokenSchema, changePasswordSchema,
+  resetPasswordRequestSchema, resetPasswordSchema,
 } from '../validators/auth.validator';
 
 const router = Router();
 
-// ==========================================
-// DEPENDENCY INJECTION (Manual Wiring)
-// ==========================================
-const userRepository = new UserRepository();
+// Dependency Injection Wiring
+const authUserRepository = new AuthUserRepository();
 const refreshTokenRepository = new RefreshTokenRepository();
 const passwordResetTokenRepository = new PasswordResetTokenRepository();
 
-const authService = new AuthService(userRepository, refreshTokenRepository);
+const authService = new AuthService(authUserRepository, refreshTokenRepository);
 const sessionService = new SessionService(refreshTokenRepository);
-const passwordService = new PasswordService(userRepository, passwordResetTokenRepository, sessionService);
+const passwordService = new PasswordService(authUserRepository, passwordResetTokenRepository, sessionService);
 
 const authController = new AuthController(authService, passwordService);
 const sessionController = new SessionController(sessionService);
@@ -51,14 +46,13 @@ router.post('/reset-password-request', validateRequest(resetPasswordRequestSchem
 router.post('/reset-password', validateRequest(resetPasswordSchema), authController.resetPassword);
 
 // ==========================================
-// PROTECTED ROUTES (Requires JWT Access Token)
+// PROTECTED ROUTES
 // ==========================================
-router.use(requireAuth); // Applies to all routes below this line
+router.use(requireAuth); 
 
 router.get('/me', authController.getCurrentUser);
 router.post('/change-password', validateRequest(changePasswordSchema), authController.changePassword);
 
-// Session Management
 router.get('/sessions', sessionController.getSessions);
 router.delete('/sessions/:sessionId', sessionController.revokeSession);
 router.delete('/sessions', sessionController.revokeAllSessions);

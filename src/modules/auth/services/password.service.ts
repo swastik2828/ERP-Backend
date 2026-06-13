@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { UserRepository } from '../repositories/user.repository';
+import { AuthUserRepository } from '../repositories/auth-user.repository';
 import { PasswordResetTokenRepository } from '../repositories/password-reset-token.repository';
 import { SessionService } from './session.service';
 import { ChangePasswordDto, ResetPasswordRequestDto, ResetPasswordDto } from '../dto/auth.dto';
@@ -11,7 +11,8 @@ import { env } from '../../../config/env';
 
 export class PasswordService {
   constructor(
-    private readonly userRepository: UserRepository,
+    // Change UserRepository to AuthUserRepository
+    private readonly authUserRepository: AuthUserRepository, 
     private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
     private readonly sessionService: SessionService
   ) {}
@@ -20,7 +21,7 @@ export class PasswordService {
    * Changes the password for an authenticated user.
    */
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
-    const user = await this.userRepository.findById(userId);
+    const user = await this.authUserRepository.findById(userId);
 
     if (!user) {
       throw new AppError('User not found', 404, 'USER_NOT_FOUND');
@@ -33,7 +34,7 @@ export class PasswordService {
     }
 
     const newPasswordHash = await hashPassword(dto.newPassword);
-    await this.userRepository.updatePassword(userId, newPasswordHash);
+    await this.authUserRepository.updatePassword(userId, newPasswordHash);
 
     // Security Standard: Revoke all other active sessions when a password is changed
     await this.sessionService.revokeAllSessions(userId);
@@ -43,7 +44,7 @@ export class PasswordService {
    * Initiates the password reset flow by generating a secure one-time-use token.
    */
   async requestPasswordReset(dto: ResetPasswordRequestDto): Promise<void> {
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await this.authUserRepository.findByEmail(dto.email);
 
     // Security Standard: Do not reveal whether an email exists in the system (Prevent enumeration)
     if (!user || !user.isActive) {
@@ -101,7 +102,7 @@ export class PasswordService {
 
     // Process the password update
     const newPasswordHash = await hashPassword(dto.newPassword);
-    await this.userRepository.updatePassword(user.id, newPasswordHash);
+    await this.authUserRepository.updatePassword(user.id, newPasswordHash);
 
     // Mark the token as used to prevent replay attacks
     await this.passwordResetTokenRepository.markAsUsed(storedToken.id);

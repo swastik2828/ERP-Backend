@@ -2,9 +2,10 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import authRoutes from './modules/auth/routes/auth.routes';
-import userRoutes from './modules/auth/routes/users.routes'; // <-- ADDED IMPORT
+import userRoutes from './modules/users/routes/users.routes'; // <-- ADDED IMPORT
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
+import studentRoutes from './modules/students/routes/students.routes';
 
 const app: Application = express();
 
@@ -24,6 +25,7 @@ app.get("/", (_req, res) => { // <-- ADDED UNDERSCORE TO _req
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/students', studentRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);
