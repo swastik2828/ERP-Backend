@@ -43,6 +43,17 @@ enum BloodGroup {
   AB_NEG
 }
 
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum AssignmentType {
+  PRIMARY
+  ASSISTANT
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -55,10 +66,11 @@ model School {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  users           User[]
-  students        Student[]
-  parents         Parent[]
-  academicClasses AcademicClass[]
+  users            User[]
+  students         Student[]
+  parents          Parent[]
+  classes          Class[]
+  academicSessions AcademicSession[]
 
   @@index([code])
   @@map("schools")
@@ -92,11 +104,11 @@ model User {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  school              School?              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  school              School?                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  parentProfile       Parent? // 1-to-1 mapping if the user is a Parent
-  classesHandled      AcademicClass[] // 1-to-N mapping if the user is a Teacher
+  parentProfile       Parent?
+  classAssignments    ClassTeacherAssignment[]
 
   @@index([schoolId])
   @@index([email])
@@ -200,26 +212,95 @@ model Parent {
   @@map("parents")
 }
 
-model AcademicClass {
-  id             String  @id @default(uuid()) @db.Uuid
-  schoolId       String  @map("school_id") @db.Uuid
-  classTeacherId String? @map("class_teacher_id") @db.Uuid // Links to User with TEACHER role
+model AcademicSession {
+  id        String       @id @default(uuid()) @db.Uuid
+  schoolId  String       @map("school_id") @db.Uuid
+  name      String       @db.VarChar(50) // E.g., "2025-2026"
+  startDate DateTime     @map("start_date") @db.Date
+  endDate   DateTime     @map("end_date") @db.Date
+  status    EntityStatus @default(ACTIVE)
 
-  name     String @db.VarChar(50) // E.g., "Grade 10"
-  section  String @db.VarChar(10) // E.g., "A"
-  capacity Int    @default(40)
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classes Class[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relationships
-  school       School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  classTeacher User?     @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
-  students     Student[]
-
-  @@unique([schoolId, name, section]) // Prevents duplicate class sections in the same school
   @@index([schoolId])
-  @@map("academic_classes")
+  @@map("academic_sessions")
+}
+
+model Class {
+  id                String @id @default(uuid()) @db.Uuid
+  schoolId          String @map("school_id") @db.Uuid
+  academicSessionId String @map("academic_session_id") @db.Uuid
+
+  name         String       @db.VarChar(50) // E.g., "Class 10"
+  code         String       @db.VarChar(20) // E.g., "C10"
+  displayOrder Int          @map("display_order")
+  description  String?      @db.Text
+  status       EntityStatus @default(ACTIVE)
+
+  school          School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession          @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  sections        Section[]
+  assignments     ClassTeacherAssignment[]
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  students  Student[]
+
+  // Enforces PRD Rule: Class Name must be unique within a school and session.
+  @@unique([schoolId, academicSessionId, name])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@map("classes")
+}
+
+model Section {
+  id      String @id @default(uuid()) @db.Uuid
+  classId String @map("class_id") @db.Uuid
+
+  name       String       @db.VarChar(20) // E.g., "A", "B"
+  roomNumber String?      @map("room_number") @db.VarChar(50)
+  capacity   Int          @default(40)
+  status     EntityStatus @default(ACTIVE)
+
+  class       Class                    @relation(fields: [classId], references: [id], onDelete: Restrict)
+  assignments ClassTeacherAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Enforces PRD Rule: Section Name must be unique within a class.
+  @@unique([classId, name])
+  @@index([classId])
+  @@map("sections")
+}
+
+model ClassTeacherAssignment {
+  id        String  @id @default(uuid()) @db.Uuid
+  classId   String  @map("class_id") @db.Uuid
+  sectionId String? @map("section_id") @db.Uuid
+  teacherId String  @map("teacher_id") @db.Uuid
+
+  assignmentType AssignmentType @default(PRIMARY) @map("assignment_type")
+  startDate      DateTime       @map("start_date") @db.Date
+  endDate        DateTime?      @map("end_date") @db.Date
+
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  teacher User     @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([classId])
+  @@index([sectionId])
+  @@index([teacherId])
+  @@map("class_teacher_assignments")
 }
 
 model Student {
@@ -249,10 +330,10 @@ model Student {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  school        School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  parent        Parent        @relation(fields: [parentId], references: [id], onDelete: Restrict)
-  academicClass AcademicClass @relation(fields: [classId], references: [id], onDelete: Restrict)
-  address       Address?      @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  parent  Parent   @relation(fields: [parentId], references: [id], onDelete: Restrict)
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Restrict)
+  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
 
   @@index([schoolId])
   @@index([classId])

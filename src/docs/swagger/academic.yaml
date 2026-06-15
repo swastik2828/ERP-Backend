@@ -1,0 +1,188 @@
+tags:
+  - name: Academics
+    description: Class and Section Management Module
+
+paths:
+  /api/v1/academics/classes:
+    post:
+      summary: Create a new class
+      tags: [Academics]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClassRequest'
+      responses:
+        '201':
+          description: Class created successfully
+    
+    get:
+      summary: Get paginated classes
+      tags: [Academics]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: search
+          schema:
+            type: string
+            description: Search by name or code
+      responses:
+        '200':
+          description: List of classes retrieved
+
+  /api/v1/academics/classes/bulk:
+    post:
+      summary: Bulk create classes and sections
+      tags: [Academics]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCreateRequest'
+      responses:
+        '201':
+          description: Bulk creation successful
+
+  /api/v1/academics/sections:
+    post:
+      summary: Create a section under a class
+      tags: [Academics]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSectionRequest'
+      responses:
+        '201':
+          description: Section created successfully
+
+  /api/v1/academics/class-teachers:
+    post:
+      summary: Assign a teacher to a class/section
+      tags: [Academics]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignTeacherRequest'
+      responses:
+        '201':
+          description: Teacher assigned successfully
+
+components:
+  schemas:
+    CreateClassRequest:
+      type: object
+      required:
+        - academicSessionId
+        - name
+        - code
+        - displayOrder
+      properties:
+        academicSessionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Class 10"
+        code:
+          type: string
+          example: "C10"
+        displayOrder:
+          type: integer
+          example: 10
+
+    BulkCreateRequest:
+      type: object
+      properties:
+        academicSessionId:
+          type: string
+          format: uuid
+        classes:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "Class 1"
+              code:
+                type: string
+                example: "C1"
+              displayOrder:
+                type: integer
+                example: 1
+              sections:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: "A"
+                    capacity:
+                      type: integer
+                      example: 40
+
+    CreateSectionRequest:
+      type: object
+      required:
+        - classId
+        - name
+      properties:
+        classId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "A"
+        capacity:
+          type: integer
+          example: 40
+
+    AssignTeacherRequest:
+      type: object
+      required:
+        - classId
+        - teacherId
+        - startDate
+      properties:
+        classId:
+          type: string
+          format: uuid
+        sectionId:
+          type: string
+          format: uuid
+        teacherId:
+          type: string
+          format: uuid
+        assignmentType:
+          type: string
+          enum: [PRIMARY, ASSISTANT]
+          default: PRIMARY
+        startDate:
+          type: string
+          format: date

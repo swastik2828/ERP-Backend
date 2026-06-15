@@ -40,7 +40,7 @@ export class StudentService {
     }
 
     // Verify the provided Class UUID actually exists and belongs to this specific school tenant
-    const validClass = await prisma.academicClass.findFirst({
+    const validClass = await prisma.class.findFirst({
       where: { id: dto.student.classId, schoolId }
     });
     if (!validClass) {
