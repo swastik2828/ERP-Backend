@@ -6,7 +6,7 @@ import prisma from '../../../database/prisma';
 
 // Mock Auth Middleware to bypass real JWT checks during route testing
 jest.mock('../../../middlewares/auth.middleware', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = { id: 'admin-123', schoolId: 'school-123', role: Role.SCHOOL_ADMIN };
     next();
   }
