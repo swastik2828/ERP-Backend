@@ -11,6 +11,7 @@ import { createClassSchema, queryClassSchema, updateClassSchema } from '../valid
 import { createSectionSchema, querySectionSchema } from '../validators/section.validator';
 import { createAssignmentSchema } from '../validators/assignment.validator';
 import { bulkCreateSchema } from '../validators/bulk.validator';
+import subjectRoutes from './subject.routes';
 
 const router = Router();
 
@@ -21,6 +22,8 @@ const controller = new AcademicController(academicService);
 
 router.use(requireAuth);
 router.use(requireTenantIsolation);
+
+router.use('/subjects', subjectRoutes);
 
 // --- Class Routes ---
 router.post('/classes', requireExactRole(['SUPER_ADMIN', 'SCHOOL_ADMIN']), validateRequest(createClassSchema), controller.createClass);

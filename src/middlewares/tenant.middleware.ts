@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../errors/AuthError';
 
-export const requireTenantIsolation = (req: Request, res: Response, next: NextFunction): void => {
+export const requireTenantIsolation = (req: Request, _res: Response, next: NextFunction): void => {
   try {
     const user = req.user;
 

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError';
 
-export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
+export const notFoundHandler = (req: Request, _res: Response, next: NextFunction): void => {
   next(new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404, 'ROUTE_NOT_FOUND'));
 };

@@ -80,6 +80,29 @@ enum TeacherStatus {
   INACTIVE
 }
 
+// Subject Module 
+
+enum SubjectType {
+  CORE
+  ELECTIVE
+  OPTIONAL
+}
+
+enum SubjectCategory {
+  ACADEMIC
+  CO_CURRICULAR
+  VOCATIONAL
+  LANGUAGE
+  SPORTS
+  LABORATORY
+}
+
+enum SubjectStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -98,6 +121,8 @@ model School {
   classes          Class[]
   academicSessions AcademicSession[]
   teachers         Teacher[]
+  subjects         Subject[]
+  curriculumMaps   CurriculumMap[]
 
   @@index([code])
   @@map("schools")
@@ -249,8 +274,9 @@ model AcademicSession {
   endDate   DateTime     @map("end_date") @db.Date
   status    EntityStatus @default(ACTIVE)
 
-  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  classes Class[]
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classes        Class[]
+  curriculumMaps CurriculumMap[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -275,11 +301,12 @@ model Class {
   sections        Section[]
   assignments     ClassTeacherAssignment[]
 
-  createdBy String?   @map("created_by") @db.Uuid
-  updatedBy String?   @map("updated_by") @db.Uuid
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  students  Student[]
+  createdBy      String?         @map("created_by") @db.Uuid
+  updatedBy      String?         @map("updated_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  students       Student[]
+  curriculumMaps CurriculumMap[]
 
   // Enforces PRD Rule: Class Name must be unique within a school and session.
   @@unique([schoolId, academicSessionId, name])
@@ -425,4 +452,56 @@ model Teacher {
   @@index([designation])
   @@index([userId])
   @@map("teachers")
+}
+
+//Subject Module
+
+model Subject {
+  id           String          @id @default(uuid()) @db.Uuid
+  schoolId     String          @map("school_id") @db.Uuid
+  name         String          @db.VarChar(255)
+  code         String          @db.VarChar(50)
+  shortName    String?         @map("short_name") @db.VarChar(50)
+  description  String?         @db.Text
+  subjectType  SubjectType     @map("subject_type")
+  category     SubjectCategory
+  credits      Int? // Optional for schools without credit systems
+  displayOrder Int             @map("display_order")
+  status       SubjectStatus   @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // Soft delete for historical preservation
+
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculumMaps CurriculumMap[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@index([name])
+  @@index([status])
+  @@map("subjects")
+}
+
+model CurriculumMap {
+  id                String  @id @default(uuid()) @db.Uuid
+  schoolId          String  @map("school_id") @db.Uuid
+  academicSessionId String  @map("academic_session_id") @db.Uuid
+  classId           String  @map("class_id") @db.Uuid
+  subjectId         String  @map("subject_id") @db.Uuid
+  isMandatory       Boolean @default(true) @map("is_mandatory")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  class           Class           @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([academicSessionId, classId, subjectId])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([classId])
+  @@index([subjectId])
+  @@map("curriculum_mappings")
 }

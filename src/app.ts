@@ -2,11 +2,12 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import authRoutes from './modules/auth/routes/auth.routes';
-import userRoutes from './modules/users/routes/users.routes'; // <-- ADDED IMPORT
+import userRoutes from './modules/users/routes/users.routes'; 
+import teacherRoutes from './modules/teachers/routes/teachers.routes';
+import studentRoutes from './modules/students/routes/students.routes';
+import academicRoutes from './modules/academics/routes/academic.routes';
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
-import studentRoutes from './modules/students/routes/students.routes';
-import teacherRoutes from './modules/teachers/routes/teachers.routes';
 
 const app: Application = express();
 
@@ -28,6 +29,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/teachers', teacherRoutes);
+app.use('/api/v1/academics', academicRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

@@ -5,7 +5,7 @@ import { env } from '../config/env';
 import { Prisma } from '@prisma/client';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const globalErrorHandler = (err: Error, req: Request, res: Response, next: NextFunction): void => {
+export const globalErrorHandler = (err: Error, _req: Request, res: Response, _next: NextFunction): void => {
   if (env.NODE_ENV === 'development') {
     console.error(`[Error] ${err.name}: ${err.message}`);
     console.error(err.stack);

@@ -1,0 +1,143 @@
+tags:
+  - name: Subjects
+    description: Subject catalog and curriculum mapping management
+
+paths:
+  /academics/subjects:
+    post:
+      tags:
+        - Subjects
+      summary: Create a new subject
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubjectInput'
+      responses:
+        '201':
+          description: Subject created successfully
+    get:
+      tags:
+        - Subjects
+      summary: List and search subjects
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by name or code
+        - in: query
+          name: subjectType
+          schema:
+            type: string
+            enum: [CORE, ELECTIVE, OPTIONAL]
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: A list of subjects
+
+  /academics/subjects/{id}/status:
+    patch:
+      tags:
+        - Subjects
+      summary: Deactivate or update subject status
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE, ARCHIVED]
+      responses:
+        '200':
+          description: Subject status updated
+
+  /academics/subjects/curriculum-mappings:
+    post:
+      tags:
+        - Subjects
+      summary: Map a subject to a class for an academic session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - academicSessionId
+                - classId
+                - subjectId
+              properties:
+                academicSessionId:
+                  type: string
+                  format: uuid
+                classId:
+                  type: string
+                  format: uuid
+                subjectId:
+                  type: string
+                  format: uuid
+                isMandatory:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Mapping created successfully
+
+components:
+  schemas:
+    CreateSubjectInput:
+      type: object
+      required:
+        - name
+        - code
+        - subjectType
+        - category
+        - displayOrder
+      properties:
+        name:
+          type: string
+          example: "Mathematics"
+        code:
+          type: string
+          example: "MATH101"
+        shortName:
+          type: string
+          example: "Math"
+        description:
+          type: string
+        subjectType:
+          type: string
+          enum: [CORE, ELECTIVE, OPTIONAL]
+        category:
+          type: string
+          enum: [ACADEMIC, CO_CURRICULAR, VOCATIONAL, LANGUAGE, SPORTS, LABORATORY]
+        credits:
+          type: integer
+          example: 5
+        displayOrder:
+          type: integer
+          example: 1
