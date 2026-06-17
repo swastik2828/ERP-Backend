@@ -3,7 +3,7 @@ import { verifyAccessToken } from '../utils/jwt.util';
 import { AUTH_CONSTANTS } from '../constants/auth.constants';
 import { UnauthorizedError } from '../errors/AuthError';
 
-export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+export const requireAuth = (req: Request, _res: Response, next: NextFunction): void => {
   try {
     const authHeader = req.header(AUTH_CONSTANTS.AUTHORIZATION_HEADER);
 

@@ -6,6 +6,7 @@ import userRoutes from './modules/users/routes/users.routes'; // <-- ADDED IMPOR
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
 import studentRoutes from './modules/students/routes/students.routes';
+import teacherRoutes from './modules/teachers/routes/teachers.routes';
 
 const app: Application = express();
 
@@ -26,6 +27,7 @@ app.get("/", (_req, res) => { // <-- ADDED UNDERSCORE TO _req
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/students', studentRoutes);
+app.use('/api/v1/teachers', teacherRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

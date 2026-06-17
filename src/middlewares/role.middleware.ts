@@ -4,7 +4,7 @@ import { ROLE_HIERARCHY } from '../constants/auth.constants';
 import { ForbiddenError, UnauthorizedError } from '../errors/AuthError';
 
 export const requireRole = (minimumRole: Role) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     try {
       const user = req.user;
 
@@ -27,7 +27,7 @@ export const requireRole = (minimumRole: Role) => {
 };
 
 export const requireExactRole = (allowedRoles: Role[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     try {
       const user = req.user;
 

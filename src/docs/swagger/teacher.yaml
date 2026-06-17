@@ -1,0 +1,195 @@
+tags:
+  - name: Teachers
+    description: Teacher Management Module
+
+paths:
+  /api/v1/teachers:
+    post:
+      summary: Create a new teacher
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTeacherRequest'
+      responses:
+        201:
+          description: Teacher created successfully
+    
+    get:
+      summary: Get all teachers (Directory)
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: department
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [ACTIVE, ON_LEAVE, SUSPENDED, RESIGNED, RETIRED, TERMINATED, INACTIVE]
+      responses:
+        200:
+          description: List of teachers retrieved successfully
+
+  /api/v1/teachers/{id}:
+    get:
+      summary: Get teacher profile by ID
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Teacher details retrieved
+
+    patch:
+      summary: Update teacher profile
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTeacherRequest'
+      responses:
+        200:
+          description: Teacher updated successfully
+
+  /api/v1/teachers/{id}/status:
+    patch:
+      summary: Change teacher employment status / Soft Delete
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ACTIVE, ON_LEAVE, SUSPENDED, RESIGNED, RETIRED, TERMINATED, INACTIVE]
+      responses:
+        200:
+          description: Status updated
+
+  /api/v1/teachers/{id}/class-assignments:
+    post:
+      summary: Assign teacher to a Class/Section
+      tags: [Teachers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignClassTeacherRequest'
+      responses:
+        200:
+          description: Class assigned successfully
+
+components:
+  schemas:
+    CreateTeacherRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - gender
+        - email
+        - phone
+        - employeeId
+        - employmentType
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        gender: { type: string, enum: [MALE, FEMALE, OTHER] }
+        email: { type: string, format: email }
+        phone: { type: string }
+        employeeId: { type: string }
+        department: { type: string }
+        designation: { type: string }
+        employmentType: { type: string, enum: [FULL_TIME, PART_TIME, CONTRACT, GUEST, PROBATION] }
+        address:
+          type: object
+          properties:
+            addressLine1: { type: string }
+            city: { type: string }
+            state: { type: string }
+            zipCode: { type: string }
+            country: { type: string, default: "India" }
+
+    UpdateTeacherRequest:
+      type: object
+      properties:
+        phone: { type: string }
+        email: { type: string }
+        department: { type: string }
+        designation: { type: string }
+        experienceYears: { type: integer }
+
+    AssignClassTeacherRequest:
+      type: object
+      required:
+        - classId
+        - startDate
+      properties:
+        classId: { type: string, format: uuid }
+        sectionId: { type: string, format: uuid }
+        assignmentType: { type: string, enum: [PRIMARY, ASSISTANT], default: PRIMARY }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }

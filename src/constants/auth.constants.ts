@@ -12,4 +12,5 @@ export const ROLE_HIERARCHY = {
   DATA_ENTRY_ADMIN: 3,
   TEACHER: 2,
   PARENT: 1,
+  STUDENT: 0,
 } as const;
