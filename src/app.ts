@@ -6,6 +6,7 @@ import userRoutes from './modules/users/routes/users.routes';
 import teacherRoutes from './modules/teachers/routes/teachers.routes';
 import studentRoutes from './modules/students/routes/students.routes';
 import academicRoutes from './modules/academics/routes/academic.routes';
+import parentRoutes from './modules/parents/routes/parents.routes';
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
 
@@ -16,6 +17,7 @@ app.use(helmet()); // Sets secure HTTP headers
 app.use(cors()); // Enables Cross-Origin Resource Sharing
 app.use(express.json()); // Parses incoming JSON payloads
 app.use(express.urlencoded({ extended: true }));
+
 
 // API Routes
 app.get("/", (_req, res) => { // <-- ADDED UNDERSCORE TO _req
@@ -30,6 +32,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/teachers', teacherRoutes);
 app.use('/api/v1/academics', academicRoutes);
+app.use('/api/v1/parents', parentRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

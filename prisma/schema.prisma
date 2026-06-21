@@ -103,6 +103,42 @@ enum SubjectStatus {
   ARCHIVED
 }
 
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+  WITHDRAWN
+  GRADUATED
+  ALUMNI
+  ARCHIVED
+}
+
+enum RelationshipType {
+  FATHER
+  MOTHER
+  GUARDIAN
+  RELATIVE
+  LEGAL_CUSTODIAN
+}
+
+enum DocumentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum AcademicEventType {
+  ADMISSION
+  CLASS_CHANGE
+  SECTION_CHANGE
+  PROMOTION
+  TRANSFER
+  GRADUATION
+  WITHDRAWN
+  REACTIVATED
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -253,14 +289,16 @@ model Parent {
   alternatePhone String? @map("alternate_phone") @db.VarChar(20)
   occupation     String? @db.VarChar(100)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   // Relationships
-  school   School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address  Address?  @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  school   School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address  Address?        @relation(fields: [addressId], references: [id], onDelete: SetNull)
   children Student[] // One parent can have multiple students
+  students ParentStudent[] // Replaces the One-to-Many children array
 
   @@index([schoolId])
   @@map("parents")
@@ -327,8 +365,9 @@ model Section {
   class       Class                    @relation(fields: [classId], references: [id], onDelete: Restrict)
   assignments ClassTeacherAssignment[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  students  Student[]
 
   // Enforces PRD Rule: Section Name must be unique within a class.
   @@unique([classId, name])
@@ -362,41 +401,104 @@ model ClassTeacherAssignment {
 model Student {
   id        String  @id @default(uuid()) @db.Uuid
   schoolId  String  @map("school_id") @db.Uuid
-  parentId  String  @map("parent_id") @db.Uuid
-  classId   String  @map("class_id") @db.Uuid // Restored Relational UUID
+  // REMOVED: parentId (Migrated to ParentStudent mapping)
+  classId   String  @map("class_id") @db.Uuid
+  sectionId String? @map("section_id") @db.Uuid // Added to track current section
   addressId String? @map("address_id") @db.Uuid
 
-  enrollmentNumber String      @unique @map("enrollment_number") @db.VarChar(50)
-  firstName        String      @map("first_name") @db.VarChar(100)
-  lastName         String      @map("last_name") @db.VarChar(100)
-  dateOfBirth      DateTime    @map("date_of_birth") @db.Date
-  gender           Gender
-  bloodGroup       BloodGroup? @map("blood_group")
-  medicalBrief     String?     @map("medical_brief") @db.Text
+  admissionNumber String      @unique @map("admission_number") @db.VarChar(50) // Renamed from enrollmentNumber
+  firstName       String      @map("first_name") @db.VarChar(100)
+  lastName        String      @map("last_name") @db.VarChar(100)
+  dateOfBirth     DateTime    @map("date_of_birth") @db.Date
+  gender          Gender
+  bloodGroup      BloodGroup? @map("blood_group")
+  religion        String?     @db.VarChar(50) // Added from PRD
+  nationality     String?     @default("Indian") @db.VarChar(50) // Added from PRD
+  medicalBrief    String?     @map("medical_brief") @db.Text
 
-  // Indian School Standards
-  fatherName   String  @map("father_name") @db.VarChar(100)
-  motherName   String  @map("mother_name") @db.VarChar(100)
-  aadharNumber String? @unique @map("aadhar_number") @db.VarChar(12)
-
+  aadharNumber  String?  @unique @map("aadhar_number") @db.VarChar(12)
   admissionDate DateTime @default(now()) @map("admission_date") @db.Date
-  isActive      Boolean  @default(true) @map("is_active")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  status StudentStatus @default(ACTIVE) // Replaced isActive boolean
+
+  // Audit & Soft Delete
+  createdBy String?   @map("created_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  parent  Parent   @relation(fields: [parentId], references: [id], onDelete: Restrict)
-  class   Class    @relation(fields: [classId], references: [id], onDelete: Restrict)
-  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  school          School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  class           Class             @relation(fields: [classId], references: [id], onDelete: Restrict)
+  section         Section?          @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  address         Address?          @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  parents         ParentStudent[]
+  documents       StudentDocument[]
+  academicHistory AcademicHistory[]
+  parent          Parent?           @relation(fields: [parentId], references: [id])
+  parentId        String?           @db.Uuid
 
   @@index([schoolId])
   @@index([classId])
-  @@index([parentId])
-  @@index([enrollmentNumber])
+  @@index([admissionNumber])
   @@index([aadharNumber])
   @@map("students")
+}
+
+model ParentStudent {
+  id                      String           @id @default(uuid()) @db.Uuid
+  parentId                String           @map("parent_id") @db.Uuid
+  studentId               String           @map("student_id") @db.Uuid
+  relationshipType        RelationshipType @map("relationship_type")
+  isPrimaryGuardian       Boolean          @default(false) @map("is_primary_guardian")
+  isEmergencyContact      Boolean          @default(false) @map("is_emergency_contact")
+  canReceiveNotifications Boolean          @default(true) @map("can_receive_notifications")
+
+  parent  Parent  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@map("parent_students")
+}
+
+model StudentDocument {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  studentId          String                     @map("student_id") @db.Uuid
+  documentName       String                     @map("document_name") @db.VarChar(255)
+  documentType       String                     @map("document_type") @db.VarChar(100)
+  fileUrl            String                     @map("file_url") @db.VarChar(500)
+  verificationStatus DocumentVerificationStatus @default(PENDING) @map("verification_status")
+  expiryDate         DateTime?                  @map("expiry_date") @db.Date
+
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_documents")
+}
+
+model AcademicHistory {
+  id                String  @id @default(uuid()) @db.Uuid
+  studentId         String  @map("student_id") @db.Uuid
+  academicSessionId String? @map("academic_session_id") @db.Uuid
+  previousClassId   String? @map("previous_class_id") @db.Uuid
+  newClassId        String? @map("new_class_id") @db.Uuid
+  previousSectionId String? @map("previous_section_id") @db.Uuid
+  newSectionId      String? @map("new_section_id") @db.Uuid
+
+  eventType AcademicEventType @map("event_type")
+  eventDate DateTime          @default(now()) @map("event_date")
+  notes     String?           @db.Text
+
+  createdBy String @map("created_by") @db.Uuid
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([eventType])
+  @@map("academic_history")
 }
 
 model Teacher {

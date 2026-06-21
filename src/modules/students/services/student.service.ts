@@ -1,147 +1,274 @@
-import { StudentRepository } from '../repositories/student.repository';
-import { AdmissionDto } from '../dto/student.dto'; // Importing from our new dedicated DTO file
-import { AppError } from '../../../errors/AppError';
-import { hashPassword } from '../../../utils/password.util';
-import prisma from '../../../database/prisma';
+import {  StudentStatus, AcademicEventType } from '@prisma/client';
+import { prisma } from '../../../database/prisma';
+import { AppError } from '../../../errors/AppError'; // Assuming custom error class
 
 export class StudentService {
-  constructor(private readonly studentRepository: StudentRepository) {}
-
   /**
-   * Generates a simple, secure temporary password for new parent accounts
+   * Promotes a student to the next class/section[cite: 93].
    */
-  private generateTempPassword(): string {
-    return Math.random().toString(36).slice(-8) + 'A1!'; 
+  async promoteStudent(
+    studentId: string,
+    schoolId: string,
+    payload: { newClassId: string; newSectionId?: string; academicSessionId: string; reason?: string },
+    auditUserId: string
+  ) {
+    return prisma.$transaction(async (tx) => {
+      // 1. Fetch current student state
+      const student = await tx.student.findFirst({
+        where: { id: studentId, schoolId, deletedAt: null }
+      });
+
+      if (!student) throw new AppError('Student not found', 404);
+      if (student.status !== StudentStatus.ACTIVE) throw new AppError('Only active students can be promoted', 400);
+
+      // 2. Update Student Record
+      const updatedStudent = await tx.student.update({
+        where: { id: studentId },
+        data: {
+          classId: payload.newClassId,
+          sectionId: payload.newSectionId,
+        }
+      });
+
+      // 3. Generate Immutable Academic History 
+      await tx.academicHistory.create({
+        data: {
+          studentId,
+          academicSessionId: payload.academicSessionId,
+          previousClassId: student.classId,
+          newClassId: payload.newClassId,
+          previousSectionId: student.sectionId,
+          newSectionId: payload.newSectionId,
+          eventType: AcademicEventType.PROMOTION,
+          notes: payload.reason || 'Standard Academic Promotion',
+          createdBy: auditUserId
+        }
+      });
+
+      // 4. Generate Enterprise Audit Log 
+      await tx.auditLog.create({
+        data: {
+          actorId: auditUserId,
+          action: 'PROMOTE',
+          entityType: 'STUDENT',
+          entityId: studentId,
+        }
+      });
+
+      return updatedStudent;
+    });
   }
 
   /**
-   * Handles the complete, atomic admission flow for a new student.
+   * Transfers a student (Internal/External)[cite: 108].
    */
-  async admitStudent(dto: AdmissionDto, schoolId: string, creatorId: string) {
-    
-    // ==========================================
-    // 1. PRE-FLIGHT VALIDATION CHECKS
-    // ==========================================
-    
-    // Check for duplicate enrollment number within this specific school
-    const existingStudent = await this.studentRepository.findByEnrollmentNumber(dto.student.enrollmentNumber, schoolId);
-    if (existingStudent) {
-      throw new AppError('A student with this enrollment number already exists', 409, 'DUPLICATE_ENROLLMENT');
-    }
-
-    // Check for duplicate Aadhaar (globally across the database to prevent Prisma crashes)
-    if (dto.student.aadharNumber) {
-      const existingAadhaar = await prisma.student.findUnique({ 
-        where: { aadharNumber: dto.student.aadharNumber } 
-      });
-      if (existingAadhaar) {
-        throw new AppError('A student with this Aadhaar number is already registered', 409, 'DUPLICATE_AADHAAR');
-      }
-    }
-
-    // Verify the provided Class UUID actually exists and belongs to this specific school tenant
-    const validClass = await prisma.class.findFirst({
-      where: { id: dto.student.classId, schoolId }
-    });
-    if (!validClass) {
-      throw new AppError('Invalid Academic Class selected or class does not belong to this school', 400, 'INVALID_CLASS');
-    }
-
-    // ==========================================
-    // 2. ATOMIC DATABASE TRANSACTION
-    // ==========================================
-    // If any of these steps fail, the entire transaction rolls back, preventing orphaned data.
-    
+  async transferStudent(
+    studentId: string,
+    schoolId: string,
+    payload: { transferType: 'INTERNAL' | 'EXTERNAL'; destinationSchool?: string; tcNumber?: string; reason: string },
+    auditUserId: string
+  ) {
     return prisma.$transaction(async (tx) => {
-      let parentId = dto.parent.existingParentId;
-      let addressId: string | undefined;
+      const updatedStudent = await tx.student.update({
+        where: { id: studentId, schoolId },
+        data: { status: StudentStatus.TRANSFERRED } // Enforces PRD Status Engine [cite: 254]
+      });
 
-      // --- A. Address Creation ---
-      if (dto.address) {
-        const newAddress = await tx.address.create({ data: dto.address });
-        addressId = newAddress.id;
-      }
-
-      // --- B. Parent & User Profile Creation ---
-      if (!parentId) {
-        // Ensure email isn't already used in the Identity Provider (Auth)
-        if (dto.parent.email) {
-          const existingUser = await tx.user.findUnique({ where: { email: dto.parent.email } });
-          if (existingUser) throw new AppError('Parent email already registered. Please use existing parent ID.', 409);
+      await tx.academicHistory.create({
+        data: {
+          studentId,
+          eventType: AcademicEventType.TRANSFER,
+          notes: `Transfer Type: ${payload.transferType}. Dest: ${payload.destinationSchool || 'N/A'}. TC: ${payload.tcNumber || 'N/A'}. Reason: ${payload.reason}`,
+          createdBy: auditUserId
         }
+      });
 
-        const tempPassword = this.generateTempPassword();
-        const hashedPassword = await hashPassword(tempPassword);
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'TRANSFER', entityType: 'STUDENT', entityId: studentId }
+      });
 
-        // 1. Create the Auth User (so the parent can log in)
-        const newUser = await tx.user.create({
-          data: {
-            schoolId,
-            email: dto.parent.email || `parent_${Date.now()}@no-email.com`, // Fallback if email is omitted
-            passwordHash: hashedPassword,
-            role: 'PARENT',
-            fullName: `${dto.parent.firstName} ${dto.parent.lastName}`,
-            phone: dto.parent.primaryPhone,
-            createdBy: creatorId,
-            temporaryPasswordRequired: true
-          }
-        });
+      return updatedStudent;
+    });
+  }
 
-        // 2. Create the real-world Parent Profile mapping
-        const newParent = await tx.parent.create({
-          data: {
-            schoolId,
-            userId: newUser.id,
-            firstName: dto.parent.firstName!,
-            lastName: dto.parent.lastName!,
-            primaryPhone: dto.parent.primaryPhone!,
-            alternatePhone: dto.parent.alternatePhone,
-            occupation: dto.parent.occupation,
-            addressId
-          }
-        });
+  /**
+   * Withdraws a student[cite: 120].
+   */
+  async withdrawStudent(
+    studentId: string,
+    schoolId: string,
+    payload: { reason: string; supportingNotes?: string },
+    auditUserId: string
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const updatedStudent = await tx.student.update({
+        where: { id: studentId, schoolId },
+        data: { status: StudentStatus.WITHDRAWN }
+      });
 
-        parentId = newParent.id;
-      } else {
-        // If existing parent, verify they belong to this school tenant
-        const parentRecord = await tx.parent.findFirst({ where: { id: parentId, schoolId } });
-        if (!parentRecord) throw new AppError('Parent record not found for this school', 404);
-        
-        // Inherit sibling's address if a new one wasn't explicitly provided
-        if (!addressId) addressId = parentRecord.addressId || undefined; 
+      await tx.academicHistory.create({
+        data: {
+          studentId,
+          eventType: AcademicEventType.WITHDRAWN,
+          notes: `Reason: ${payload.reason}. Notes: ${payload.supportingNotes || ''}`,
+          createdBy: auditUserId
+        }
+      });
+
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'WITHDRAW', entityType: 'STUDENT', entityId: studentId }
+      });
+
+      return updatedStudent;
+    });
+  }
+
+  /**
+   * Graduates a student[cite: 129].
+   */
+  async graduateStudent(studentId: string, schoolId: string, finalSessionId: string, auditUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({ where: { id: studentId } });
+      
+      const updatedStudent = await tx.student.update({
+        where: { id: studentId, schoolId },
+        data: { status: StudentStatus.GRADUATED }
+      });
+
+      await tx.academicHistory.create({
+        data: {
+          studentId,
+          academicSessionId: finalSessionId,
+          previousClassId: student?.classId,
+          eventType: AcademicEventType.GRADUATION,
+          notes: 'Student officially graduated',
+          createdBy: auditUserId
+        }
+      });
+
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'GRADUATE', entityType: 'STUDENT', entityId: studentId }
+      });
+
+      return updatedStudent;
+    });
+  }
+
+  /**
+   * New Student Admission
+   */
+  async createStudent(schoolId: string, payload: any, auditUserId: string) {
+    const dob = new Date(payload.dateOfBirth);
+    if (dob > new Date()) {
+      throw new AppError('Date of Birth cannot be a future date', 400); // PRD Rule Validation
+    }
+
+    // Check for unique constraints within the school
+    const existingStudent = await prisma.student.findFirst({
+      where: {
+        OR: [
+          { admissionNumber: payload.admissionNumber, schoolId },
+          { aadharNumber: payload.aadharNumber }
+        ]
       }
+    });
 
-      // --- C. Student Creation ---
-      const newStudent = await tx.student.create({
+    if (existingStudent) {
+      throw new AppError('Admission Number or Aadhaar already exists', 400);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const student = await tx.student.create({
         data: {
           schoolId,
-          parentId,
-          addressId,
-          classId: dto.student.classId, // The strictly verified UUID
-          enrollmentNumber: dto.student.enrollmentNumber,
-          firstName: dto.student.firstName,
-          lastName: dto.student.lastName,
-          dateOfBirth: dto.student.dateOfBirth,
-          gender: dto.student.gender,
-          bloodGroup: dto.student.bloodGroup,
-          medicalBrief: dto.student.medicalBrief,
-          
-          // Indian Standards
-          fatherName: dto.student.fatherName,
-          motherName: dto.student.motherName,
-          aadharNumber: dto.student.aadharNumber,
+          classId: payload.classId,
+          sectionId: payload.sectionId,
+          admissionNumber: payload.admissionNumber,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          dateOfBirth: dob,
+          gender: payload.gender,
+          createdBy: auditUserId,
+          status: StudentStatus.ACTIVE
         }
       });
 
-      return newStudent;
+      await tx.academicHistory.create({
+        data: {
+          studentId: student.id,
+          academicSessionId: payload.academicSessionId,
+          newClassId: payload.classId,
+          newSectionId: payload.sectionId,
+          eventType: AcademicEventType.ADMISSION,
+          notes: 'Initial Admission',
+          createdBy: auditUserId
+        }
+      });
+
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'CREATE', entityType: 'STUDENT', entityId: student.id }
+      });
+
+      return student;
     });
   }
 
   /**
-   * Retrieves a paginated list of students isolated to the requesting school.
+   * Update Student Profile
    */
-  async getStudents(schoolId: string, page: number, limit: number, classId?: string, search?: string) {
-    const skip = (page - 1) * limit;
-    return this.studentRepository.getStudents(schoolId, { skip, take: limit, classId, search });
+  async updateStudent(studentId: string, schoolId: string, payload: any, auditUserId: string) {
+    // PRD: Restrictions on immutable fields without special permissions
+    const forbiddenKeys = ['admissionNumber', 'schoolId', 'createdBy'];
+    const hasForbiddenUpdate = forbiddenKeys.some(key => Object.keys(payload).includes(key));
+    
+    if (hasForbiddenUpdate) {
+      throw new AppError('Cannot update immutable fields (admissionNumber, schoolId, createdBy)', 403);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const student = await tx.student.update({
+        where: { id: studentId, schoolId },
+        data: payload
+      });
+
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'UPDATE', entityType: 'STUDENT', entityId: studentId }
+      });
+
+      return student;
+    });
+  }
+
+  /**
+   * Reactivate Student
+   */
+  async reactivateStudent(studentId: string, schoolId: string, auditUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({ where: { id: studentId } });
+      
+      if (student?.status === StudentStatus.ARCHIVED) {
+        throw new AppError('Cannot reactivate permanently archived students', 400);
+      }
+
+      const updatedStudent = await tx.student.update({
+        where: { id: studentId, schoolId },
+        data: { status: StudentStatus.ACTIVE }
+      });
+
+      await tx.academicHistory.create({
+        data: {
+          studentId,
+          eventType: AcademicEventType.REACTIVATED,
+          notes: 'Student account reactivated',
+          createdBy: auditUserId
+        }
+      });
+
+      await tx.auditLog.create({
+        data: { actorId: auditUserId, action: 'REACTIVATE', entityType: 'STUDENT', entityId: studentId }
+      });
+
+      return updatedStudent;
+    });
   }
 }
