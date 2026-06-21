@@ -1,12 +1,12 @@
 import request from 'supertest';
 import app from '../../../app'; 
 import { prisma } from '../../../database/prisma';
-import { sign } from 'jsonwebtoken'; 
-import { RelationshipType, StudentStatus } from '@prisma/client';
+import { generateAccessToken } from '../../../utils/jwt.util'; 
+import { RelationshipType, StudentStatus, Role } from '@prisma/client';
 
 jest.setTimeout(30000);
 
-describe('Integration Test: Full Admission Flow [cite: 386-396]', () => {
+describe('Integration Test: Full Admission Flow', () => {
   let authToken: string;
   let parentId: string;
   let studentId: string;
@@ -17,14 +17,29 @@ describe('Integration Test: Full Admission Flow [cite: 386-396]', () => {
   const nextClassId = '44444444-4444-4444-4444-444444444444';
   const sessionId = '33333333-3333-3333-3333-333333333333'; 
   const parentUserId = '55555555-5555-5555-5555-555555555555';
+  const adminUserId = '66666666-6666-6666-6666-666666666666'; // Using a valid UUID for the admin
 
   beforeAll(async () => {
-    // Generate mock token
-    authToken = sign(
-      { sub: 'admin-123', schoolId, role: 'SCHOOL_ADMIN', email: 'admin@school.com' },
-      process.env.JWT_SECRET || 'test-secret',
-      { expiresIn: '1h' }
-    );
+    // Generate mock token using the valid admin UUID
+    authToken = generateAccessToken({ 
+      sub: adminUserId, 
+      schoolId, 
+      role: Role.SCHOOL_ADMIN, 
+      email: 'admin@school.com' 
+    });
+
+    // Seed the Admin User to satisfy any foreign key constraints in Audit Logs
+    await prisma.user.upsert({
+      where: { id: adminUserId },
+      update: {},
+      create: { 
+        id: adminUserId, 
+        email: 'admin@school.com', 
+        passwordHash: 'hash', 
+        fullName: 'Admin User',
+        role: Role.SCHOOL_ADMIN 
+      }
+    });
 
     // Seed the database with mandatory relational entities
     await prisma.school.upsert({
@@ -64,6 +79,7 @@ describe('Integration Test: Full Admission Flow [cite: 386-396]', () => {
     await prisma.academicHistory.deleteMany({ where: { student: { schoolId } } });
     await prisma.student.deleteMany({ where: { schoolId } });
     await prisma.parent.deleteMany({ where: { schoolId } });
+    await prisma.user.delete({ where: { id: adminUserId } }); // Clean up the seeded admin user
     await prisma.$disconnect();
   });
 
@@ -91,7 +107,7 @@ describe('Integration Test: Full Admission Flow [cite: 386-396]', () => {
       .send({
         classId,
         academicSessionId: sessionId,
-        admissionNumber: `ADM-${Date.now()}`, // Ensure unique admission number per test run
+        admissionNumber: `ADM-${Date.now()}`, 
         firstName: 'Jane',
         lastName: 'Smith',
         dateOfBirth: '2010-05-15',
