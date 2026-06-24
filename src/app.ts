@@ -8,6 +8,8 @@ import studentRoutes from './modules/students/routes/students.routes';
 import academicRoutes from './modules/academics/routes/academic.routes';
 import parentRoutes from './modules/parents/routes/parents.routes';
 import attendanceRoutes from './modules/attendance/routes/attendance.routes';
+import examRoutes from './modules/examinations/routes/exam.routes';
+
 import { globalErrorHandler } from './middlewares/error.middleware';
 import { notFoundHandler } from './middlewares/notFound.middleware';
 
@@ -35,6 +37,7 @@ app.use('/api/v1/teachers', teacherRoutes);
 app.use('/api/v1/academics', academicRoutes);
 app.use('/api/v1/parents', parentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
+app.use('/api/v1/examinations', examRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

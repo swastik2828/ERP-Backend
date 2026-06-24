@@ -162,6 +162,34 @@ enum CorrectionStatus {
 }
 
 // ==========================================
+// EXAMINATION & ASSESSMENT MODULE
+// ==========================================
+
+enum ExamType {
+  UNIT_TEST
+  MONTHLY_TEST
+  QUARTERLY
+  HALF_YEARLY
+  MID_TERM
+  PRE_BOARD
+  ANNUAL
+  PRACTICAL
+  ORAL
+  ASSIGNMENT
+  PROJECT
+  CUSTOM
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  WITHHELD
+  ABSENT
+  PROMOTED
+  DETENTION
+}
+
+// ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
 
@@ -184,6 +212,10 @@ model School {
   attendanceRecords            AttendanceRecord[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
   teacherAttendances           TeacherAttendance[]
+  exams                        Exam[]
+  studentMarks                 StudentMark[]
+  gradeScales                  GradeScale[]
+  results                      Result[]
 
   @@index([code])
   @@map("schools")
@@ -223,6 +255,10 @@ model User {
   parentProfile       Parent?
   classAssignments    ClassTeacherAssignment[]
   teacherProfile      Teacher?
+
+  // Explicit relations for Examination Module
+  marksEntered  StudentMark[] @relation("MarksEnteredBy")
+  marksVerified StudentMark[] @relation("MarksVerifiedBy")
 
   @@index([schoolId])
   @@index([email])
@@ -344,6 +380,7 @@ model AcademicSession {
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
   attendanceRecords AttendanceRecord[]
+  exams             Exam[]
 
   @@index([schoolId])
   @@map("academic_sessions")
@@ -371,6 +408,7 @@ model Class {
   updatedAt      DateTime        @updatedAt @map("updated_at")
   students       Student[]
   curriculumMaps CurriculumMap[]
+  examSubjects   ExamSubject[]
 
   // Enforces PRD Rule: Class Name must be unique within a school and session.
   @@unique([schoolId, academicSessionId, name])
@@ -391,9 +429,10 @@ model Section {
   class       Class                    @relation(fields: [classId], references: [id], onDelete: Restrict)
   assignments ClassTeacherAssignment[]
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  students  Student[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  students     Student[]
+  examSubjects ExamSubject[]
 
   // Enforces PRD Rule: Section Name must be unique within a class.
   @@unique([classId, name])
@@ -464,6 +503,8 @@ model Student {
   parent            Parent?            @relation(fields: [parentId], references: [id])
   parentId          String?            @db.Uuid
   attendanceRecords AttendanceRecord[]
+  studentMarks      StudentMark[]
+  results           Result[]
 
   @@index([schoolId])
   @@index([classId])
@@ -572,6 +613,7 @@ model Teacher {
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   address            Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
   teacherAttendances TeacherAttendance[]
+  invigilations      ExamSchedule[]      @relation("TeacherInvigilations") // Added this line
 
   // Indexes & Constraints
   @@unique([schoolId, employeeId])
@@ -605,6 +647,7 @@ model Subject {
 
   school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   curriculumMaps CurriculumMap[]
+  examSubjects   ExamSubject[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -713,4 +756,145 @@ model TeacherAttendance {
   @@index([schoolId])
   @@index([attendanceDate])
   @@map("teacher_attendance")
+}
+
+// Exam Module
+model Exam {
+  id                String   @id @default(uuid()) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  academicSessionId String   @map("academic_session_id") @db.Uuid
+  name              String   @db.VarChar(255)
+  examType          ExamType @map("exam_type")
+  description       String?  @db.Text
+  startDate         DateTime @map("start_date") @db.Date
+  endDate           DateTime @map("end_date") @db.Date
+  isPublished       Boolean  @default(false) @map("is_published")
+  isLocked          Boolean  @default(false) @map("is_locked")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // Soft delete behavior [cite: 441]
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  subjects        ExamSubject[]
+  results         Result[]
+
+  // Unique constraint [cite: 102]
+  @@unique([schoolId, academicSessionId, name])
+  // Indexes for performance [cite: 104, 105, 106, 107, 443]
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([examType])
+  @@index([isPublished])
+  @@map("exams")
+}
+
+model ExamSubject {
+  id        String   @id @default(uuid()) @db.Uuid
+  examId    String   @map("exam_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  sectionId String?  @map("section_id") @db.Uuid
+  maxMarks  Float    @map("max_marks")
+  passMarks Float    @map("pass_marks")
+  weightage Float    @default(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  exam      Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  class     Class          @relation(fields: [classId], references: [id], onDelete: Restrict)
+  section   Section?       @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  schedules ExamSchedule[]
+  marks     StudentMark[]
+
+  @@unique([examId, subjectId, classId, sectionId])
+  @@map("exam_subjects")
+}
+
+model ExamSchedule {
+  id            String   @id @default(uuid()) @db.Uuid
+  examSubjectId String   @map("exam_subject_id") @db.Uuid
+  examDate      DateTime @map("exam_date") @db.Date
+  startTime     DateTime @map("start_time") @db.Time
+  endTime       DateTime @map("end_time") @db.Time
+  room          String?  @db.VarChar(50)
+  invigilatorId String?  @map("invigilator_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  examSubject ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  invigilator Teacher?    @relation("TeacherInvigilations", fields: [invigilatorId], references: [id], onDelete: SetNull)
+
+  @@map("exam_schedules")
+}
+
+model StudentMark {
+  id            String    @id @default(uuid()) @db.Uuid
+  schoolId      String    @map("school_id") @db.Uuid
+  examId        String    @map("exam_id") @db.Uuid
+  examSubjectId String    @map("exam_subject_id") @db.Uuid
+  studentId     String    @map("student_id") @db.Uuid
+  marksObtained Float     @map("marks_obtained")
+  remarks       String?   @db.Text
+  enteredBy     String    @map("entered_by") @db.Uuid
+  verifiedBy    String?   @map("verified_by") @db.Uuid
+  verifiedAt    DateTime? @map("verified_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  school         School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  examSubject    ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Restrict)
+  student        Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  enteredByUser  User        @relation("MarksEnteredBy", fields: [enteredBy], references: [id], onDelete: Restrict)
+  verifiedByUser User?       @relation("MarksVerifiedBy", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  // Unique constraint to prevent duplicate mark entries [cite: 148, 366]
+  @@unique([studentId, examSubjectId])
+  @@map("student_marks")
+}
+
+model GradeScale {
+  id            String   @id @default(uuid()) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  name          String   @db.VarChar(100)
+  minPercentage Float    @map("min_percentage")
+  maxPercentage Float    @map("max_percentage")
+  grade         String   @db.VarChar(5)
+  gradePoint    Float    @map("grade_point")
+  remarks       String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@map("grade_scales")
+}
+
+model Result {
+  id                   String       @id @default(uuid()) @db.Uuid
+  schoolId             String       @map("school_id") @db.Uuid
+  examId               String       @map("exam_id") @db.Uuid
+  studentId            String       @map("student_id") @db.Uuid
+  totalMarks           Float        @map("total_marks")
+  obtainedMarks        Float        @map("obtained_marks")
+  percentage           Float
+  grade                String       @db.VarChar(5)
+  rank                 Int?
+  gpa                  Float?
+  attendancePercentage Float?       @map("attendance_percentage")
+  resultStatus         ResultStatus @map("result_status")
+  publishedAt          DateTime?    @map("published_at")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@map("results")
 }
