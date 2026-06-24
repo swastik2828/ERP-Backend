@@ -140,6 +140,28 @@ enum AcademicEventType {
 }
 
 // ==========================================
+// ATTENDANCE MODULE ENUMS
+// ==========================================
+
+enum StudentAttendanceStatus {
+  PRESENT
+  ABSENT
+  HOLIDAY
+}
+
+enum TeacherAttendanceStatus {
+  PRESENT
+  ABSENT
+  HOLIDAY
+}
+
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
 
@@ -151,14 +173,17 @@ model School {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  users            User[]
-  students         Student[]
-  parents          Parent[]
-  classes          Class[]
-  academicSessions AcademicSession[]
-  teachers         Teacher[]
-  subjects         Subject[]
-  curriculumMaps   CurriculumMap[]
+  users                        User[]
+  students                     Student[]
+  parents                      Parent[]
+  classes                      Class[]
+  academicSessions             AcademicSession[]
+  teachers                     Teacher[]
+  subjects                     Subject[]
+  curriculumMaps               CurriculumMap[]
+  attendanceRecords            AttendanceRecord[]
+  attendanceCorrectionRequests AttendanceCorrectionRequest[]
+  teacherAttendances           TeacherAttendance[]
 
   @@index([code])
   @@map("schools")
@@ -316,8 +341,9 @@ model AcademicSession {
   classes        Class[]
   curriculumMaps CurriculumMap[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  attendanceRecords AttendanceRecord[]
 
   @@index([schoolId])
   @@map("academic_sessions")
@@ -428,15 +454,16 @@ model Student {
   updatedAt DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  school          School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  class           Class             @relation(fields: [classId], references: [id], onDelete: Restrict)
-  section         Section?          @relation(fields: [sectionId], references: [id], onDelete: Restrict)
-  address         Address?          @relation(fields: [addressId], references: [id], onDelete: SetNull)
-  parents         ParentStudent[]
-  documents       StudentDocument[]
-  academicHistory AcademicHistory[]
-  parent          Parent?           @relation(fields: [parentId], references: [id])
-  parentId        String?           @db.Uuid
+  school            School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  class             Class              @relation(fields: [classId], references: [id], onDelete: Restrict)
+  section           Section?           @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  address           Address?           @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  parents           ParentStudent[]
+  documents         StudentDocument[]
+  academicHistory   AcademicHistory[]
+  parent            Parent?            @relation(fields: [parentId], references: [id])
+  parentId          String?            @db.Uuid
+  attendanceRecords AttendanceRecord[]
 
   @@index([schoolId])
   @@index([classId])
@@ -541,9 +568,10 @@ model Teacher {
   deletedAt DateTime? @map("deleted_at") // For Soft Delete
 
   // Relationships
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address            Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  teacherAttendances TeacherAttendance[]
 
   // Indexes & Constraints
   @@unique([schoolId, employeeId])
@@ -606,4 +634,83 @@ model CurriculumMap {
   @@index([classId])
   @@index([subjectId])
   @@map("curriculum_mappings")
+}
+
+// ==========================================
+// ATTENDANCE MODULE MODELS
+// ==========================================
+
+model AttendanceRecord {
+  id                String                  @id @default(uuid()) @db.Uuid
+  schoolId          String                  @map("school_id") @db.Uuid
+  studentId         String                  @map("student_id") @db.Uuid
+  academicSessionId String                  @map("academic_session_id") @db.Uuid
+  attendanceDate    DateTime                @map("attendance_date") @db.Date
+  status            StudentAttendanceStatus
+  remarks           String?                 @db.Text
+  markedBy          String                  @map("marked_by") @db.Uuid
+  updatedBy         String?                 @map("updated_by") @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  deletedAt         DateTime?               @map("deleted_at")
+
+  // Relations
+  school          School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student         Student                       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession               @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  corrections     AttendanceCorrectionRequest[]
+
+  @@unique([studentId, attendanceDate]) // Prevent duplicate entries [cite: 132, 133, 213]
+  @@index([schoolId])
+  @@index([attendanceDate])
+  @@index([status])
+  @@index([academicSessionId])
+  @@index([studentId])
+  @@map("attendance_records")
+}
+
+model AttendanceCorrectionRequest {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  schoolId           String                  @map("school_id") @db.Uuid
+  attendanceRecordId String                  @map("attendance_record_id") @db.Uuid
+  oldStatus          StudentAttendanceStatus @map("old_status")
+  newStatus          StudentAttendanceStatus @map("new_status")
+  reason             String                  @db.Text
+  requestedBy        String                  @map("requested_by") @db.Uuid
+  approvedBy         String?                 @map("approved_by") @db.Uuid
+  approvedAt         DateTime?               @map("approved_at")
+  status             CorrectionStatus        @default(PENDING)
+  createdAt          DateTime                @default(now()) @map("created_at")
+
+  // Relations
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([attendanceRecordId])
+  @@index([status])
+  @@map("attendance_correction_requests")
+}
+
+model TeacherAttendance {
+  id             String                  @id @default(uuid()) @db.Uuid
+  schoolId       String                  @map("school_id") @db.Uuid
+  teacherId      String                  @map("teacher_id") @db.Uuid
+  attendanceDate DateTime                @map("attendance_date") @db.Date
+  status         TeacherAttendanceStatus
+  checkInTime    DateTime?               @map("check_in_time")
+  checkOutTime   DateTime?               @map("check_out_time")
+  remarks        String?                 @db.Text
+  recordedBy     String                  @map("recorded_by") @db.Uuid
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  // Relations
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, attendanceDate]) // Prevent duplicate check-ins [cite: 153, 222]
+  @@index([schoolId])
+  @@index([attendanceDate])
+  @@map("teacher_attendance")
 }
