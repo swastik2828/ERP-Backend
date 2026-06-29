@@ -162,6 +162,42 @@ enum CorrectionStatus {
 }
 
 // ==========================================
+// TIMETABLE MODULE ENUMS
+// ==========================================
+
+enum TimetableStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PeriodType {
+  LECTURE
+  BREAK
+  LUNCH
+  ASSEMBLY
+  PRACTICAL
+}
+
+enum RoomType {
+  LECTURE_HALL
+  LABORATORY
+  SPORTS_ROOM
+  AUDITORIUM
+  LIBRARY
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// ==========================================
 // EXAMINATION & ASSESSMENT MODULE
 // ==========================================
 
@@ -216,6 +252,9 @@ model School {
   studentMarks                 StudentMark[]
   gradeScales                  GradeScale[]
   results                      Result[]
+  periods                      Period[]
+  classrooms                   Classroom[]
+  timetables                   Timetable[]
 
   @@index([code])
   @@map("schools")
@@ -259,6 +298,7 @@ model User {
   // Explicit relations for Examination Module
   marksEntered  StudentMark[] @relation("MarksEnteredBy")
   marksVerified StudentMark[] @relation("MarksVerifiedBy")
+  timetables    Timetable[]
 
   @@index([schoolId])
   @@index([email])
@@ -381,6 +421,7 @@ model AcademicSession {
   updatedAt         DateTime           @updatedAt @map("updated_at")
   attendanceRecords AttendanceRecord[]
   exams             Exam[]
+  timetables        Timetable[]
 
   @@index([schoolId])
   @@map("academic_sessions")
@@ -409,6 +450,7 @@ model Class {
   students       Student[]
   curriculumMaps CurriculumMap[]
   examSubjects   ExamSubject[]
+  timetables     Timetable[]
 
   // Enforces PRD Rule: Class Name must be unique within a school and session.
   @@unique([schoolId, academicSessionId, name])
@@ -433,6 +475,7 @@ model Section {
   updatedAt    DateTime      @updatedAt @map("updated_at")
   students     Student[]
   examSubjects ExamSubject[]
+  timetables   Timetable[]
 
   // Enforces PRD Rule: Section Name must be unique within a class.
   @@unique([classId, name])
@@ -614,6 +657,7 @@ model Teacher {
   address            Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
   teacherAttendances TeacherAttendance[]
   invigilations      ExamSchedule[]      @relation("TeacherInvigilations") // Added this line
+  timetableSlots     TimetableSlot[]
 
   // Indexes & Constraints
   @@unique([schoolId, employeeId])
@@ -648,6 +692,7 @@ model Subject {
   school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   curriculumMaps CurriculumMap[]
   examSubjects   ExamSubject[]
+  timetableSlots TimetableSlot[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -897,4 +942,104 @@ model Result {
 
   @@unique([examId, studentId])
   @@map("results")
+}
+
+// ==========================================
+// TIMETABLE MODULE MODELS
+// ==========================================
+
+model Period {
+  id           String     @id @default(uuid()) @db.Uuid
+  schoolId     String     @map("school_id") @db.Uuid
+  name         String     @db.VarChar(50) // e.g., "Period 1", "Lunch Break"
+  type         PeriodType @default(LECTURE)
+  startTime    DateTime   @map("start_time") @db.Time
+  endTime      DateTime   @map("end_time") @db.Time
+  displayOrder Int        @map("display_order")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  slots  TimetableSlot[]
+
+  @@index([schoolId])
+  @@map("periods")
+}
+
+model Classroom {
+  id       String   @id @default(uuid()) @db.Uuid
+  schoolId String   @map("school_id") @db.Uuid
+  name     String   @db.VarChar(50)
+  building String?  @db.VarChar(100)
+  floor    String?  @db.VarChar(20)
+  capacity Int
+  roomType RoomType @default(LECTURE_HALL) @map("room_type")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // Soft delete required by PRD
+
+  school School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  slots  TimetableSlot[]
+
+  @@index([schoolId])
+  @@map("classrooms")
+}
+
+model Timetable {
+  id                String          @id @default(uuid()) @db.Uuid
+  schoolId          String          @map("school_id") @db.Uuid
+  academicSessionId String          @map("academic_session_id") @db.Uuid
+  classId           String          @map("class_id") @db.Uuid
+  sectionId         String          @map("section_id") @db.Uuid
+  version           Int             @default(1)
+  status            TimetableStatus @default(DRAFT)
+
+  publishedBy String?   @map("published_by") @db.Uuid
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  class           Class           @relation(fields: [classId], references: [id], onDelete: Restrict)
+  section         Section         @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  publisher       User?           @relation(fields: [publishedBy], references: [id], onDelete: SetNull)
+  slots           TimetableSlot[]
+
+  // Constraint: Unique (schoolId, academicSessionId, classId, sectionId, version)
+  @@unique([schoolId, academicSessionId, classId, sectionId, version])
+  @@index([schoolId])
+  @@index([status])
+  @@map("timetables")
+}
+
+model TimetableSlot {
+  id          String    @id @default(uuid()) @db.Uuid
+  timetableId String    @map("timetable_id") @db.Uuid
+  dayOfWeek   DayOfWeek @map("day_of_week")
+  periodId    String    @map("period_id") @db.Uuid
+  subjectId   String?   @map("subject_id") @db.Uuid
+  teacherId   String?   @map("teacher_id") @db.Uuid
+  classroomId String?   @map("classroom_id") @db.Uuid
+  notes       String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  timetable Timetable  @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  period    Period     @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  subject   Subject?   @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher   Teacher?   @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  classroom Classroom? @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+
+  // Validation: Unique(dayOfWeek, periodId, timetableId)
+  @@unique([timetableId, dayOfWeek, periodId])
+  @@index([timetableId])
+  @@index([teacherId, dayOfWeek]) // Crucial index for teacher conflict detection
+  @@index([classroomId, dayOfWeek]) // Crucial index for classroom conflict detection
+  @@map("timetable_slots")
 }
