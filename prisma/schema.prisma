@@ -226,6 +226,56 @@ enum ResultStatus {
 }
 
 // ==========================================
+// FEE MANAGEMENT & RECEIPT MODULE ENUMS
+// ==========================================
+
+enum RecurringType {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  ANNUAL
+  CUSTOM
+}
+
+enum FeeAssignmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum TransactionType {
+  FEE_ASSIGNED
+  PAYMENT
+  DISCOUNT
+  FINE
+  MANUAL_ADJUSTMENT
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  DD
+  ONLINE // Future-ready
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+// ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
 
@@ -255,6 +305,10 @@ model School {
   periods                      Period[]
   classrooms                   Classroom[]
   timetables                   Timetable[]
+
+  feeCategories FeeCategory[]
+  feeStructures FeeStructure[]
+  payments      Payment[]
 
   @@index([code])
   @@map("schools")
@@ -299,6 +353,14 @@ model User {
   marksEntered  StudentMark[] @relation("MarksEnteredBy")
   marksVerified StudentMark[] @relation("MarksVerifiedBy")
   timetables    Timetable[]
+
+  // Fee Management Relations
+  feeStructures FeeStructure[] @relation("FeeStructureCreator")
+  feeLedgers    FeeLedger[]    @relation("FeeLedgerCreator")
+  payments      Payment[]      @relation("PaymentCollector")
+  receipts      Receipt[]      @relation("ReceiptGenerator")
+  discounts     Discount[]     @relation("DiscountApprover")
+  fines         Fine[]         @relation("FineCreator")
 
   @@index([schoolId])
   @@index([email])
@@ -422,6 +484,7 @@ model AcademicSession {
   attendanceRecords AttendanceRecord[]
   exams             Exam[]
   timetables        Timetable[]
+  feeStructures     FeeStructure[]
 
   @@index([schoolId])
   @@map("academic_sessions")
@@ -451,6 +514,7 @@ model Class {
   curriculumMaps CurriculumMap[]
   examSubjects   ExamSubject[]
   timetables     Timetable[]
+  feeStructures  FeeStructure[]
 
   // Enforces PRD Rule: Class Name must be unique within a school and session.
   @@unique([schoolId, academicSessionId, name])
@@ -548,6 +612,12 @@ model Student {
   attendanceRecords AttendanceRecord[]
   studentMarks      StudentMark[]
   results           Result[]
+
+  feeAssignments StudentFeeAssignment[]
+  feeLedgers     FeeLedger[]
+  payments       Payment[]
+  discounts      Discount[]
+  fines          Fine[]
 
   @@index([schoolId])
   @@index([classId])
@@ -1042,4 +1112,178 @@ model TimetableSlot {
   @@index([teacherId, dayOfWeek]) // Crucial index for teacher conflict detection
   @@index([classroomId, dayOfWeek]) // Crucial index for classroom conflict detection
   @@map("timetable_slots")
+}
+
+// ==========================================
+// FEE MANAGEMENT & RECEIPT MODULE MODELS
+// ==========================================
+
+model FeeCategory {
+  id            String        @id @default(uuid()) @db.Uuid
+  schoolId      String        @map("school_id") @db.Uuid
+  name          String        @db.VarChar(100)
+  code          String        @db.VarChar(50)
+  recurringType RecurringType @map("recurring_type")
+  description   String?       @db.Text
+  isActive      Boolean       @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  feeStructures FeeStructure[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@map("fee_categories")
+}
+
+model FeeStructure {
+  id                String @id @default(uuid()) @db.Uuid
+  schoolId          String @map("school_id") @db.Uuid
+  academicSessionId String @map("academic_session_id") @db.Uuid
+  classId           String @map("class_id") @db.Uuid
+  feeCategoryId     String @map("fee_category_id") @db.Uuid
+
+  amount        Float
+  dueDate       DateTime      @map("due_date") @db.Date
+  recurrence    RecurringType
+  isOptional    Boolean       @default(false) @map("is_optional")
+  effectiveFrom DateTime      @map("effective_from") @db.Date
+  effectiveTo   DateTime?     @map("effective_to") @db.Date
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  school          School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession        @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  class           Class                  @relation(fields: [classId], references: [id], onDelete: Restrict)
+  feeCategory     FeeCategory            @relation(fields: [feeCategoryId], references: [id], onDelete: Restrict)
+  creator         User?                  @relation("FeeStructureCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignments     StudentFeeAssignment[]
+
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([classId])
+  @@map("fee_structures")
+}
+
+model StudentFeeAssignment {
+  id             String              @id @default(uuid()) @db.Uuid
+  studentId      String              @map("student_id") @db.Uuid
+  feeStructureId String              @map("fee_structure_id") @db.Uuid
+  assignedAmount Float               @map("assigned_amount")
+  assignedDate   DateTime            @default(now()) @map("assigned_date") @db.Date
+  status         FeeAssignmentStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, feeStructureId])
+  @@index([studentId])
+  @@map("student_fee_assignments")
+}
+
+model FeeLedger {
+  id              String          @id @default(uuid()) @db.Uuid
+  studentId       String          @map("student_id") @db.Uuid
+  transactionType TransactionType @map("transaction_type")
+  amount          Float
+  balanceAfter    Float           @map("balance_after")
+  referenceId     String?         @map("reference_id") @db.Uuid // ID of Payment, Assignment, Fine, or Discount
+  remarks         String?         @db.Text
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  creator User?   @relation("FeeLedgerCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([transactionType])
+  @@map("fee_ledgers")
+}
+
+model Payment {
+  id                   String        @id @default(uuid()) @db.Uuid
+  paymentNumber        String        @unique @map("payment_number") @db.VarChar(50)
+  schoolId             String        @map("school_id") @db.Uuid
+  studentId            String        @map("student_id") @db.Uuid
+  amountPaid           Float         @map("amount_paid")
+  paymentMode          PaymentMode   @map("payment_mode")
+  transactionReference String?       @map("transaction_reference") @db.VarChar(100)
+  remarks              String?       @db.Text
+  paymentStatus        PaymentStatus @default(SUCCESS) @map("payment_status")
+
+  collectedBy String?  @map("collected_by") @db.Uuid
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  // Relations
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  collector User?    @relation("PaymentCollector", fields: [collectedBy], references: [id], onDelete: SetNull)
+  receipt   Receipt?
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@map("payments")
+}
+
+model Receipt {
+  id            String   @id @default(uuid()) @db.Uuid
+  receiptNumber String   @unique @map("receipt_number") @db.VarChar(50)
+  paymentId     String   @unique @map("payment_id") @db.Uuid
+  generatedAt   DateTime @default(now()) @map("generated_at")
+  generatedBy   String?  @map("generated_by") @db.Uuid
+  pdfUrl        String?  @map("pdf_url") @db.VarChar(500)
+
+  // Relations
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  generator User?   @relation("ReceiptGenerator", fields: [generatedBy], references: [id], onDelete: SetNull)
+
+  @@index([receiptNumber])
+  @@map("receipts")
+}
+
+model Discount {
+  id        String       @id @default(uuid()) @db.Uuid
+  studentId String       @map("student_id") @db.Uuid
+  type      DiscountType
+  value     Float
+  reason    String       @db.VarChar(255)
+
+  approvedBy String?  @map("approved_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  approver User?   @relation("DiscountApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@map("discounts")
+}
+
+model Fine {
+  id        String @id @default(uuid()) @db.Uuid
+  studentId String @map("student_id") @db.Uuid
+  amount    Float
+  reason    String @db.VarChar(255)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  creator User?   @relation("FineCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@map("fines")
 }
