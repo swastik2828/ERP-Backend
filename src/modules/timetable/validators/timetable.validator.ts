@@ -7,35 +7,47 @@ import { DayOfWeek, RoomType, PeriodType } from '@prisma/client';
 
 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/; // HH:mm format
 
+// 1. Extract the base object BEFORE refinement
+const periodBodyBase = z.object({
+  name: z.string().min(2).max(50),
+  type: z.nativeEnum(PeriodType).default(PeriodType.LECTURE),
+  startTime: z.string().regex(timeRegex, "Invalid start time format. Use HH:mm"),
+  endTime: z.string().regex(timeRegex, "Invalid end time format. Use HH:mm"),
+  displayOrder: z.number().int().min(1),
+});
+
+// 2. Apply refinement to the create schema
 export const createPeriodSchema = z.object({
-  body: z.object({
-    name: z.string().min(2).max(50),
-    type: z.nativeEnum(PeriodType).default(PeriodType.LECTURE),
-    startTime: z.string().regex(timeRegex, "Invalid start time format. Use HH:mm"),
-    endTime: z.string().regex(timeRegex, "Invalid end time format. Use HH:mm"),
-    displayOrder: z.number().int().min(1),
-  }).refine((data) => {
-    // Validation: endTime > startTime
+  body: periodBodyBase.refine((data) => {
     const [startHr, startMin] = data.startTime.split(':').map(Number);
     const [endHr, endMin] = data.endTime.split(':').map(Number);
-    const startTotal = startHr * 60 + startMin;
-    const endTotal = endHr * 60 + endMin;
-    return endTotal > startTotal;
+    return (endHr * 60 + endMin) > (startHr * 60 + startMin);
   }, {
     message: "End time must be after start time",
     path: ["endTime"]
   })
 });
 
+// 3. Apply partial FIRST, then refine only if both fields are provided during an update
 export const updatePeriodSchema = z.object({
-  body: createPeriodSchema.shape.body.partial(),
+  body: periodBodyBase.partial().refine((data) => {
+    if (data.startTime && data.endTime) {
+      const [startHr, startMin] = data.startTime.split(':').map(Number);
+      const [endHr, endMin] = data.endTime.split(':').map(Number);
+      return (endHr * 60 + endMin) > (startHr * 60 + startMin);
+    }
+    return true; // Pass if they are only updating one field
+  }, {
+    message: "End time must be after start time",
+    path: ["endTime"]
+  }),
   params: z.object({
     id: z.string().uuid("Invalid Period ID")
   })
 });
 
 // ============================================================================
-// CLASSROOM VALIDATORS
+// CLASSROOM VALIDATORS (Leave the rest of the file exactly as it was)
 // ============================================================================
 
 export const createClassroomSchema = z.object({
