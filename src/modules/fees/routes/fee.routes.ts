@@ -1,9 +1,9 @@
 import { Router } from 'express';
+import { Role } from '@prisma/client';
 import { feeController } from '../controllers/fee.controller';
 import { validateRequest } from '../../../middlewares/validation.middleware';
-import { authenticate } from '../../../middlewares/auth.middleware';
-import { authorizeRoles } from '../../../middlewares/role.middleware';
-import { Role } from '@prisma/client';
+import { requireAuth } from '../../../middlewares/auth.middleware'; // Correct import
+import { requireRole, requireExactRole } from '../../../middlewares/role.middleware'; // Correct import
 import { 
   createFeeCategorySchema, 
   createFeeStructureSchema, 
@@ -15,22 +15,22 @@ import {
 const router = Router();
 
 // Apply authentication to all fee routes
-router.use(authenticate);
+router.use(requireAuth);
 
 // ==========================================
 // FEE CATEGORY ROUTES
 // ==========================================
-// PRD Rule: Super Admin & Admin can manage categories
+// Admin and Super Admin can manage categories
 router.post(
   '/categories',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN),
+  requireExactRole([Role.SUPER_ADMIN, Role.SCHOOL_ADMIN]),
   validateRequest(createFeeCategorySchema),
   feeController.createFeeCategory
 );
 
 router.get(
   '/categories',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.DATA_ENTRY_ADMIN),
+  requireRole(Role.DATA_ENTRY_ADMIN), // DATA_ENTRY_ADMIN and above
   feeController.getFeeCategories
 );
 
@@ -39,7 +39,7 @@ router.get(
 // ==========================================
 router.post(
   '/structures',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN),
+  requireExactRole([Role.SUPER_ADMIN, Role.SCHOOL_ADMIN]),
   validateRequest(createFeeStructureSchema),
   feeController.createFeeStructure
 );
@@ -49,14 +49,14 @@ router.post(
 // ==========================================
 router.post(
   '/students/:studentId/assign-fee',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN),
+  requireExactRole([Role.SUPER_ADMIN, Role.SCHOOL_ADMIN]),
   validateRequest(assignFeeSchema),
   feeController.assignFee
 );
 
 router.get(
   '/students/:studentId/ledger',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.DATA_ENTRY_ADMIN, Role.STUDENT, Role.PARENT),
+  requireRole(Role.STUDENT), // Lowest role permitted to view ledger
   validateRequest(getStudentLedgerSchema),
   feeController.getStudentLedger
 );
@@ -64,10 +64,9 @@ router.get(
 // ==========================================
 // PAYMENT & RECEIPT ROUTES
 // ==========================================
-// PRD Rule: Data Entry Admin can also collect offline payments and generate receipts
 router.post(
   '/payments',
-  authorizeRoles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.DATA_ENTRY_ADMIN),
+  requireRole(Role.DATA_ENTRY_ADMIN), // DATA_ENTRY_ADMIN and above
   validateRequest(collectPaymentSchema),
   feeController.collectPayment
 );
