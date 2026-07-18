@@ -11,6 +11,7 @@ import attendanceRoutes from './modules/attendance/routes/attendance.routes';
 import examRoutes from './modules/examinations/routes/exam.routes';
 import timetableRoutes from './modules/timetable/routes/timetable.routes';
 import feeRoutes from './modules/fees/routes/fee.routes';
+import homeworkRoutes from './modules/homework/routes/assignment.routes';
 
 
 import { globalErrorHandler } from './middlewares/error.middleware';
@@ -43,7 +44,7 @@ app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/examinations', examRoutes);
 app.use('/api/v1/timetable', timetableRoutes);
 app.use('/api/v1/fees', feeRoutes);
-
+app.use('/api/v1/homework', homeworkRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

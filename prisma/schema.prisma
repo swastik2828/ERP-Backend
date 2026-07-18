@@ -275,6 +275,38 @@ enum DiscountType {
   FIXED
 }
 
+// Homework and Assignment
+enum AssignmentStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+  DELETED
+}
+
+enum SubmissionType {
+  TEXT
+  FILE
+  TEXT_AND_FILE
+  NONE
+}
+
+enum AssignmentSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  LATE_SUBMITTED
+  RETURNED
+  GRADED
+  LOCKED
+}
+
+enum CommentVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -1286,4 +1318,103 @@ model Fine {
 
   @@index([studentId])
   @@map("fines")
+}
+
+// Homework and Assignment
+model Assignment {
+  id                             String           @id @default(uuid()) @db.Uuid
+  schoolId                       String           @db.Uuid
+  academicSessionId              String           @db.Uuid
+  classId                        String           @db.Uuid
+  sectionId                      String           @db.Uuid
+  subjectId                      String           @db.Uuid
+  teacherId                      String           @db.Uuid
+  title                          String           @db.VarChar(200)
+  description                    String           @db.Text
+  clarificationNote              String?          @db.Text
+  status                         AssignmentStatus @default(DRAFT)
+  submissionType                 SubmissionType   @default(TEXT_AND_FILE)
+  maxScore                       Decimal          @default(100.00) @db.Decimal(6, 2)
+  dueDate                        DateTime         @db.Timestamptz
+  publishAt                      DateTime?        @db.Timestamptz
+  publishedAt                    DateTime?        @db.Timestamptz
+  gracePeriodHours               Int              @default(0) @db.SmallInt
+  allowLateSubmission            Boolean          @default(true)
+  lateSubmissionPenaltyPercent   Decimal          @default(0.00) @db.Decimal(5, 2)
+  allowResubmission              Boolean          @default(true)
+  maxAttempts                    Int              @default(1) @db.SmallInt
+  allowStudentComments           Boolean          @default(true)
+  instructionsAttachmentRequired Boolean          @default(false)
+  createdBy                      String           @db.Uuid
+  updatedBy                      String?          @db.Uuid
+  createdAt                      DateTime         @default(now()) @db.Timestamptz
+  updatedAt                      DateTime         @updatedAt @db.Timestamptz
+  deletedAt                      DateTime?        @db.Timestamptz
+  deletedBy                      String?          @db.Uuid
+
+  // Note: Ensure relations match your existing models (School, AcademicSession, Class, Section, Subject, Teacher)
+  submissions AssignmentSubmission[]
+
+  @@index([schoolId, status, deletedAt], name: "idx_assignment_school_status")
+  @@index([schoolId, classId, sectionId, subjectId, academicSessionId], name: "idx_assignment_class_section_subject")
+  @@index([schoolId, teacherId, status], name: "idx_assignment_teacher")
+  @@index([schoolId, dueDate], name: "idx_assignment_due_date")
+  @@index([schoolId, publishAt], name: "idx_assignment_publish_at") // Partial index conceptualized
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  assignmentId       String                     @db.Uuid
+  schoolId           String                     @db.Uuid
+  studentId          String                     @db.Uuid
+  submissionGroupId  String                     @db.Uuid
+  attemptNumber      Int                        @default(1) @db.SmallInt
+  status             AssignmentSubmissionStatus @default(DRAFT)
+  textResponse       String?                    @db.Text
+  isLate             Boolean                    @default(false)
+  submittedAt        DateTime?                  @db.Timestamptz
+  viewedByTeacherAt  DateTime?                  @db.Timestamptz
+  score              Decimal?                   @db.Decimal(6, 2)
+  latePenaltyApplied Decimal?                   @db.Decimal(5, 2)
+  finalScore         Decimal?                   @db.Decimal(6, 2)
+  gradedBy           String?                    @db.Uuid
+  gradedAt           DateTime?                  @db.Timestamptz
+  returnedAt         DateTime?                  @db.Timestamptz
+  lockedAt           DateTime?                  @db.Timestamptz
+  idempotencyKey     String?                    @db.VarChar(128)
+  createdAt          DateTime                   @default(now()) @db.Timestamptz
+  updatedAt          DateTime                   @updatedAt @db.Timestamptz
+  deletedAt          DateTime?                  @db.Timestamptz
+  deletedBy          String?                    @db.Uuid
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, studentId, attemptNumber], name: "idx_submission_assignment_student")
+  @@unique([schoolId, idempotencyKey], name: "idx_submission_idempotency")
+  @@index([submissionGroupId, attemptNumber], name: "idx_submission_group")
+  @@index([schoolId, assignmentId, status], name: "idx_submission_status")
+  @@index([schoolId, studentId, status], name: "idx_submission_student_school")
+  @@map("assignment_submissions")
+}
+
+model AssignmentAudit {
+  id            String   @id @default(uuid()) @db.Uuid
+  schoolId      String   @db.Uuid
+  entityType    String   @db.VarChar(50)
+  entityId      String   @db.Uuid
+  action        String   @db.VarChar(60)
+  actorId       String   @db.Uuid
+  actorRole     String   @db.VarChar(20)
+  oldValues     Json?    @db.JsonB
+  newValues     Json?    @db.JsonB
+  correlationId String   @db.Uuid
+  ipAddress     String?  @db.VarChar(45)
+  userAgent     String?  @db.VarChar(500)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([schoolId, entityType, entityId, createdAt], name: "idx_audit_entity")
+  @@index([schoolId, actorId, createdAt], name: "idx_audit_actor")
+  @@index([correlationId], name: "idx_audit_correlation")
+  @@map("assignment_audits")
 }

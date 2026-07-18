@@ -1,0 +1,203 @@
+openapi: 3.0.0
+info:
+  title: Homework & Assignment Management API
+  version: 1.0.0
+  description: API endpoints for managing assignments and submissions with tenant isolation.
+
+tags:
+  - name: Assignments
+    description: Assignment creation, publishing, and deletion endpoints.
+
+paths:
+  /api/v1/homework:
+    post:
+      tags:
+        - Assignments
+      summary: Create a new assignment
+      description: Creates a new assignment as DRAFT (or SCHEDULED if publishAt is provided). Requires TEACHER or ADMIN role.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentDto'
+      responses:
+        '201':
+          description: Assignment created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Assignment'
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized - Tenant ID missing
+        '403':
+          description: Forbidden - Insufficient role permissions
+
+  /api/v1/homework/{id}/publish:
+    post:
+      tags:
+        - Assignments
+      summary: Publish an assignment
+      description: Instantly publishes a DRAFT or SCHEDULED assignment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The unique ID of the assignment
+      responses:
+        '200':
+          description: Assignment published successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Assignment'
+        '403':
+          description: Forbidden - Invalid state transition (e.g., already ACTIVE)
+        '404':
+          description: Assignment not found
+
+  /api/v1/homework/{id}:
+    delete:
+      tags:
+        - Assignments
+      summary: Soft delete an assignment
+      description: Soft deletes an assignment and logically cascades to child records.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The unique ID of the assignment
+      responses:
+        '200':
+          description: Assignment deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Assignment deleted successfully"
+        '404':
+          description: Assignment not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateAssignmentDto:
+      type: object
+      required:
+        - academicSessionId
+        - classId
+        - sectionId
+        - subjectId
+        - title
+        - description
+        - dueDate
+      properties:
+        title:
+          type: string
+          example: "Algebra Chapter 4 Practice"
+        description:
+          type: string
+          example: "Complete odd numbers 1-15 on page 42."
+        academicSessionId:
+          type: string
+          format: uuid
+        classId:
+          type: string
+          format: uuid
+        sectionId:
+          type: string
+          format: uuid
+        subjectId:
+          type: string
+          format: uuid
+        dueDate:
+          type: string
+          format: date-time
+          example: "2026-07-25T23:59:59Z"
+        publishAt:
+          type: string
+          format: date-time
+          nullable: true
+        submissionType:
+          type: string
+          enum: [TEXT, FILE, TEXT_AND_FILE, NONE]
+          default: TEXT_AND_FILE
+        maxScore:
+          type: number
+          default: 100
+        gracePeriodHours:
+          type: integer
+          default: 0
+        allowLateSubmission:
+          type: boolean
+          default: true
+        lateSubmissionPenaltyPercent:
+          type: number
+          default: 0
+        allowResubmission:
+          type: boolean
+          default: true
+        maxAttempts:
+          type: integer
+          default: 1
+        allowStudentComments:
+          type: boolean
+          default: true
+
+    Assignment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        schoolId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, PUBLISHED, ACTIVE, CLOSED, ARCHIVED, DELETED]
+        title:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time

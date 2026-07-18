@@ -1,12 +1,18 @@
 import app from './app';
 import { env } from './config/env';
 import prisma from './database/prisma';
+import { AssignmentJobs } from './modules/homework/jobs/assignment.jobs';
+
+// const PORT = process.env.PORT || 3000;
 
 const startServer = async () => {
   try {
     // Attempt to connect to the database before starting the server
     await prisma.$connect();
     console.log('✅ Successfully connected to the PostgreSQL Database');
+
+    AssignmentJobs.initJobs();
+    console.log('✅ Background jobs initialized.');
 
     const server = app.listen(env.PORT, () => {
       console.log(`🚀 Server is running in ${env.NODE_ENV} mode on port ${env.PORT}`);
