@@ -1,4 +1,4 @@
-import { PrismaClient, Assignment, Prisma } from '@prisma/client';
+import {  Assignment, Prisma } from '@prisma/client';
 import prisma from '../../../database/prisma';
 
 export class AssignmentRepository {
@@ -26,7 +26,7 @@ export class AssignmentRepository {
   /**
    * Updates an assignment scoped to the tenant.
    */
-  async update(id: string, schoolId: string, data: Prisma.AssignmentUpdateInput): Promise<Assignment> {
+  async update(id: string, _schoolId: string, data: Prisma.AssignmentUpdateInput): Promise<Assignment> {
     return prisma.assignment.update({
       where: {
         id,
@@ -42,7 +42,7 @@ export class AssignmentRepository {
    * Soft deletes an assignment (BR-045).
    * Cascading soft-deletes to children will be handled in the Service layer within a transaction.
    */
-  async softDelete(id: string, schoolId: string, deletedBy: string): Promise<Assignment> {
+  async softDelete(id: string, _schoolId: string, deletedBy: string): Promise<Assignment> {
     return prisma.assignment.update({
       where: { id },
       data: {

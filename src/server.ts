@@ -2,6 +2,7 @@ import app from './app';
 import { env } from './config/env';
 import prisma from './database/prisma';
 import { AssignmentJobs } from './modules/homework/jobs/assignment.jobs';
+import { NoticeJobs } from './modules/notices/jobs/notice.jobs';
 
 // const PORT = process.env.PORT || 3000;
 
@@ -12,6 +13,7 @@ const startServer = async () => {
     console.log('✅ Successfully connected to the PostgreSQL Database');
 
     AssignmentJobs.initJobs();
+    NoticeJobs.initJobs();
     console.log('✅ Background jobs initialized.');
 
     const server = app.listen(env.PORT, () => {

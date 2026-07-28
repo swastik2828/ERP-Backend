@@ -307,6 +307,44 @@ enum CommentVisibility {
   PRIVATE
 }
 
+// Notice board Module
+enum NoticeType {
+  NOTICE
+  CIRCULAR
+}
+
+enum NoticePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NoticeStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+  EXPIRED
+}
+
+enum TargetType {
+  ALL
+  ROLE
+  CLASS
+  SECTION
+  STUDENT
+  PARENT
+  TEACHER
+  INDIVIDUAL
+}
+
+enum AcknowledgmentStatus {
+  PENDING
+  ACKNOWLEDGED
+  DECLINED
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -338,9 +376,11 @@ model School {
   classrooms                   Classroom[]
   timetables                   Timetable[]
 
-  feeCategories FeeCategory[]
-  feeStructures FeeStructure[]
-  payments      Payment[]
+  feeCategories    FeeCategory[]
+  feeStructures    FeeStructure[]
+  payments         Payment[]
+  notices          Notice[]
+  noticeCategories NoticeCategory[]
 
   @@index([code])
   @@map("schools")
@@ -393,6 +433,14 @@ model User {
   receipts      Receipt[]      @relation("ReceiptGenerator")
   discounts     Discount[]     @relation("DiscountApprover")
   fines         Fine[]         @relation("FineCreator")
+
+  //notice board 
+  noticesCreated        Notice[]               @relation("NoticeCreator")
+  noticesUpdated        Notice[]               @relation("NoticeUpdater")
+  noticeReadReceipts    NoticeReadReceipt[]
+  noticeAcknowledgments NoticeAcknowledgment[]
+  noticeComments        NoticeComment[]
+  noticeTargets         NoticeTarget[]
 
   @@index([schoolId])
   @@index([email])
@@ -489,11 +537,12 @@ model Parent {
   deletedAt DateTime? @map("deleted_at")
 
   // Relationships
-  school   School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address  Address?        @relation(fields: [addressId], references: [id], onDelete: SetNull)
-  children Student[] // One parent can have multiple students
-  students ParentStudent[] // Replaces the One-to-Many children array
+  school        School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address       Address?        @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  children      Student[] // One parent can have multiple students
+  students      ParentStudent[] // Replaces the One-to-Many children array
+  noticeTargets NoticeTarget[]
 
   @@index([schoolId])
   @@map("parents")
@@ -517,6 +566,7 @@ model AcademicSession {
   exams             Exam[]
   timetables        Timetable[]
   feeStructures     FeeStructure[]
+  notices           Notice[]
 
   @@index([schoolId])
   @@map("academic_sessions")
@@ -547,6 +597,7 @@ model Class {
   examSubjects   ExamSubject[]
   timetables     Timetable[]
   feeStructures  FeeStructure[]
+  noticeTargets  NoticeTarget[]
 
   // Enforces PRD Rule: Class Name must be unique within a school and session.
   @@unique([schoolId, academicSessionId, name])
@@ -567,11 +618,12 @@ model Section {
   class       Class                    @relation(fields: [classId], references: [id], onDelete: Restrict)
   assignments ClassTeacherAssignment[]
 
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  students     Student[]
-  examSubjects ExamSubject[]
-  timetables   Timetable[]
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  students      Student[]
+  examSubjects  ExamSubject[]
+  timetables    Timetable[]
+  noticeTargets NoticeTarget[]
 
   // Enforces PRD Rule: Section Name must be unique within a class.
   @@unique([classId, name])
@@ -650,6 +702,8 @@ model Student {
   payments       Payment[]
   discounts      Discount[]
   fines          Fine[]
+
+  noticeTargets NoticeTarget[]
 
   @@index([schoolId])
   @@index([classId])
@@ -760,6 +814,7 @@ model Teacher {
   teacherAttendances TeacherAttendance[]
   invigilations      ExamSchedule[]      @relation("TeacherInvigilations") // Added this line
   timetableSlots     TimetableSlot[]
+  noticeTargets      NoticeTarget[]
 
   // Indexes & Constraints
   @@unique([schoolId, employeeId])
@@ -1417,4 +1472,242 @@ model AssignmentAudit {
   @@index([schoolId, actorId, createdAt], name: "idx_audit_actor")
   @@index([correlationId], name: "idx_audit_correlation")
   @@map("assignment_audits")
+}
+
+// ==========================================
+// NOTICE BOARD & CIRCULAR MODULE
+// ==========================================
+
+model Notice {
+  id                String  @id @default(uuid()) @db.Uuid
+  schoolId          String  @map("school_id") @db.Uuid
+  academicSessionId String? @map("academic_session_id") @db.Uuid
+  categoryId        String? @map("category_id") @db.Uuid
+
+  title   String  @db.VarChar(255)
+  content String  @db.Text
+  summary String? @db.VarChar(500)
+
+  type     NoticeType     @default(NOTICE)
+  priority NoticePriority @default(NORMAL)
+  status   NoticeStatus   @default(DRAFT)
+
+  isPinned Boolean @default(false) @map("is_pinned")
+  pinOrder Int     @default(0) @map("pin_order")
+
+  publishAt   DateTime? @map("publish_at") @db.Timestamptz
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz
+  publishedAt DateTime? @map("published_at") @db.Timestamptz
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz
+
+  requiresAcknowledgment Boolean   @default(false) @map("requires_acknowledgment")
+  acknowledgmentDeadline DateTime? @map("acknowledgment_deadline") @db.Timestamptz
+  allowComments          Boolean   @default(true) @map("allow_comments")
+
+  viewCount           Int @default(0) @map("view_count")
+  uniqueReaderCount   Int @default(0) @map("unique_reader_count")
+  acknowledgmentCount Int @default(0) @map("acknowledgment_count")
+
+  createdBy String    @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy String?   @map("deleted_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicSession AcademicSession? @relation(fields: [academicSessionId], references: [id], onDelete: SetNull)
+  category        NoticeCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  creator         User             @relation("NoticeCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  updater         User?            @relation("NoticeUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  targets         NoticeTarget[]
+  attachments     NoticeAttachment[]
+  readReceipts    NoticeReadReceipt[]
+  acknowledgments NoticeAcknowledgment[]
+  comments        NoticeComment[]
+  auditLogs       NoticeAudit[]
+
+  // Indexes
+  @@index([schoolId, status, deletedAt], name: "idx_notice_school_status")
+  @@index([schoolId, isPinned, status, pinOrder], name: "idx_notice_pinned")
+  @@index([schoolId, type, status, priority], name: "idx_notice_type_status")
+  @@index([schoolId, publishAt], name: "idx_notice_publish")
+  @@index([schoolId, expiresAt], name: "idx_notice_expiry")
+  @@index([schoolId, createdAt], name: "idx_notice_created")
+  @@index([schoolId, academicSessionId], name: "idx_notice_session")
+  @@index([schoolId, categoryId], name: "idx_notice_category")
+  @@map("notices")
+}
+
+model NoticeCategory {
+  id       String @id @default(uuid()) @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  name         String  @db.VarChar(100)
+  code         String  @db.VarChar(50)
+  description  String? @db.Text
+  color        String? @db.VarChar(7)
+  icon         String? @db.VarChar(50)
+  displayOrder Int     @default(0) @map("display_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  notices Notice[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("notice_categories")
+}
+
+model NoticeTarget {
+  id              String     @id @default(uuid()) @db.Uuid
+  noticeId        String     @map("notice_id") @db.Uuid
+  targetType      TargetType
+  targetRole      Role?      @map("target_role") // Ensure the 'Role' enum exists in your base schema
+  targetClassId   String?    @map("target_class_id") @db.Uuid
+  targetSectionId String?    @map("target_section_id") @db.Uuid
+  targetStudentId String?    @map("target_student_id") @db.Uuid
+  targetParentId  String?    @map("target_parent_id") @db.Uuid
+  targetTeacherId String?    @map("target_teacher_id") @db.Uuid
+  targetUserId    String?    @map("target_user_id") @db.Uuid
+
+  notice        Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  targetClass   Class?   @relation(fields: [targetClassId], references: [id], onDelete: SetNull)
+  targetSection Section? @relation(fields: [targetSectionId], references: [id], onDelete: SetNull)
+  targetStudent Student? @relation(fields: [targetStudentId], references: [id], onDelete: SetNull)
+  targetParent  Parent?  @relation(fields: [targetParentId], references: [id], onDelete: SetNull)
+  targetTeacher Teacher? @relation(fields: [targetTeacherId], references: [id], onDelete: SetNull)
+  targetUser    User?    @relation(fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([noticeId])
+  @@index([targetType])
+  @@index([targetClassId])
+  @@index([targetSectionId])
+  @@index([targetStudentId])
+  @@index([targetParentId])
+  @@index([targetTeacherId])
+  @@index([targetUserId])
+  @@map("notice_targets")
+}
+
+model NoticeAttachment {
+  id       String @id @default(uuid()) @db.Uuid
+  noticeId String @map("notice_id") @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  fileName     String  @map("file_name") @db.VarChar(255)
+  originalName String  @map("original_name") @db.VarChar(255)
+  mimeType     String  @map("mime_type") @db.VarChar(100)
+  fileSize     Int     @map("file_size")
+  fileUrl      String  @map("file_url") @db.VarChar(500)
+  fileHash     String? @map("file_hash") @db.VarChar(64)
+
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([noticeId])
+  @@index([schoolId])
+  @@map("notice_attachments")
+}
+
+model NoticeReadReceipt {
+  id       String @id @default(uuid()) @db.Uuid
+  noticeId String @map("notice_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  readAt    DateTime @default(now()) @map("read_at") @db.Timestamptz
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.Text
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+  @@index([schoolId])
+  @@map("notice_read_receipts")
+}
+
+model NoticeAcknowledgment {
+  id       String @id @default(uuid()) @db.Uuid
+  noticeId String @map("notice_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  status         AcknowledgmentStatus @default(PENDING)
+  acknowledgedAt DateTime?            @map("acknowledged_at") @db.Timestamptz
+  declinedAt     DateTime?            @map("declined_at") @db.Timestamptz
+  remarks        String?              @db.Text
+  signatureUrl   String?              @map("signature_url") @db.VarChar(500)
+  ipAddress      String?              @map("ip_address") @db.VarChar(45)
+  userAgent      String?              @map("user_agent") @db.Text
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+  @@index([schoolId, status])
+  @@map("notice_acknowledgments")
+}
+
+model NoticeComment {
+  id       String @id @default(uuid()) @db.Uuid
+  noticeId String @map("notice_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  content         String    @db.Text
+  isEdited        Boolean   @default(false) @map("is_edited")
+  editedAt        DateTime? @map("edited_at") @db.Timestamptz
+  parentCommentId String?   @map("parent_comment_id") @db.Uuid
+
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy String?   @map("deleted_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  notice        Notice          @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentComment NoticeComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: SetNull)
+  replies       NoticeComment[] @relation("CommentReplies")
+
+  @@index([noticeId, isDeleted, createdAt])
+  @@index([userId])
+  @@map("notice_comments")
+}
+
+model NoticeAudit {
+  id            String   @id @default(uuid()) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  noticeId      String   @map("notice_id") @db.Uuid
+  action        String   @db.VarChar(60)
+  actorId       String   @map("actor_id") @db.Uuid
+  actorRole     String   @map("actor_role") @db.VarChar(20)
+  oldValues     Json?    @db.JsonB
+  newValues     Json?    @db.JsonB
+  correlationId String   @db.Uuid
+  ipAddress     String?  @map("ip_address") @db.VarChar(45)
+  userAgent     String?  @map("user_agent") @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, noticeId, createdAt])
+  @@index([schoolId, actorId, createdAt])
+  @@index([correlationId])
+  @@map("notice_audits")
 }

@@ -19,19 +19,19 @@ router.use(requireAuth);
 // Routes
 router.post(
   '/',
-  requireRole(['TEACHER', 'ADMIN']), // RBAC enforcement
+  requireRole(['TEACHER', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN']), // RBAC enforcement
   assignmentController.createAssignment
 );
 
 router.post(
   '/:id/publish',
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['TEACHER', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN']),
   assignmentController.publishAssignment
 );
 
 router.delete(
   '/:id',
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['TEACHER', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN']),
   assignmentController.deleteAssignment
 );
 
