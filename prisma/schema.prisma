@@ -345,6 +345,50 @@ enum AcknowledgmentStatus {
   DECLINED
 }
 
+// --- Leave Management Enums ---
+enum LeaveApplicantType {
+  STUDENT
+  PARENT
+  TEACHER
+  STAFF
+}
+
+enum LeaveType {
+  SICK_LEAVE
+  CASUAL_LEAVE
+  EMERGENCY_LEAVE
+  MEDICAL_LEAVE
+  FAMILY_FUNCTION
+  SPORTS_EVENT
+  EXAMINATION
+  EARNED_LEAVE
+  MATERNITY_LEAVE
+  PATERNITY_LEAVE
+  DUTY_LEAVE
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum LeavePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum HalfType {
+  FIRST_HALF
+  SECOND_HALF
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -381,6 +425,7 @@ model School {
   payments         Payment[]
   notices          Notice[]
   noticeCategories NoticeCategory[]
+  leaveRequests    LeaveRequest[]
 
   @@index([code])
   @@map("schools")
@@ -441,6 +486,11 @@ model User {
   noticeAcknowledgments NoticeAcknowledgment[]
   noticeComments        NoticeComment[]
   noticeTargets         NoticeTarget[]
+
+  //leave Management
+  leaveApplications LeaveRequest[] @relation("LeaveApplicant")
+  leavesSubmitted   LeaveRequest[] @relation("LeaveSubmitter")
+  leaveApprovals    LeaveRequest[] @relation("LeaveApprover")
 
   @@index([schoolId])
   @@index([email])
@@ -704,6 +754,7 @@ model Student {
   fines          Fine[]
 
   noticeTargets NoticeTarget[]
+  leaveRequests LeaveRequest[]
 
   @@index([schoolId])
   @@index([classId])
@@ -1710,4 +1761,55 @@ model NoticeAudit {
   @@index([schoolId, actorId, createdAt])
   @@index([correlationId])
   @@map("notice_audits")
+}
+
+// --- Leave Management Model ---
+// --- Leave Management Model ---
+model LeaveRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  schoolId String @db.Uuid
+  school   School @relation(fields: [schoolId], references: [id])
+
+  applicantType LeaveApplicantType
+  applicantId   String             @db.Uuid
+  applicant     User               @relation("LeaveApplicant", fields: [applicantId], references: [id])
+
+  studentId String?  @db.Uuid
+  student   Student? @relation(fields: [studentId], references: [id])
+
+  submittedBy String @db.Uuid
+  submitter   User   @relation("LeaveSubmitter", fields: [submittedBy], references: [id])
+
+  approverId String? @db.Uuid
+  approver   User?   @relation("LeaveApprover", fields: [approverId], references: [id])
+
+  leaveType  LeaveType
+  reason     String        @db.Text
+  startDate  DateTime
+  endDate    DateTime
+  totalDays  Int
+  halfDay    Boolean       @default(false)
+  halfType   HalfType?
+  priority   LeavePriority @default(NORMAL)
+  attachment String?
+
+  remarks      String? @db.Text
+  adminRemarks String? @db.Text
+
+  status LeaveStatus @default(PENDING)
+
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([applicantId])
+  @@index([approverId])
+  @@index([startDate])
+  @@index([createdAt])
+  @@map("leave_requests")
 }
