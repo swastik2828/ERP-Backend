@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../../../../app';
-import prisma from '../../../../database/prisma';
+import app from '../../../app';
+import prisma from '../../../database/prisma';
 import { sign } from 'jsonwebtoken';
 
 describe('Homework Module (e2e)', () => {

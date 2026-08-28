@@ -13,6 +13,7 @@ import timetableRoutes from './modules/timetable/routes/timetable.routes';
 import feeRoutes from './modules/fees/routes/fee.routes';
 import homeworkRoutes from './modules/homework/routes/assignment.routes';
 import noticeRoutes from './modules/notices/routes/notices.routes';
+import notificationRoutes from './modules/notifications/routes/notification.routes';
 
 
 import { globalErrorHandler } from './middlewares/error.middleware';
@@ -47,6 +48,7 @@ app.use('/api/v1/timetable', timetableRoutes);
 app.use('/api/v1/fees', feeRoutes);
 app.use('/api/v1/homework', homeworkRoutes);
 app.use('/api/v1/notices', noticeRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // Catch-all route for 404s
 app.use(notFoundHandler);

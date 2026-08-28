@@ -389,6 +389,34 @@ enum HalfType {
   SECOND_HALF
 }
 
+// Notification System
+
+enum NotificationCategory {
+  ACADEMIC
+  ATTENDANCE
+  FEES
+  LEAVE
+  NOTICE
+  TIMETABLE
+  SYSTEM
+  SECURITY
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  DEAD_LETTER
+}
+
 // ==========================================
 // CORE TENANT (SCHOOL)
 // ==========================================
@@ -1812,4 +1840,80 @@ model LeaveRequest {
   @@index([startDate])
   @@index([createdAt])
   @@map("leave_requests")
+}
+
+// -- Notification System --
+model Notification {
+  id          String               @id @default(uuid())
+  schoolId    String // Tenant isolation
+  recipientId String // Foreign key to User
+  type        String // e.g., ASSIGNMENT_PUBLISHED
+  category    NotificationCategory
+  title       String
+  body        String
+  entityType  String? // e.g., ASSIGNMENT
+  entityId    String? // e.g., assignment-uuid
+  metadata    Json? // Stores navigation/context data
+  priority    NotificationPriority @default(NORMAL)
+
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, recipientId, createdAt]) // Optimized for latest inbox fetch
+  @@index([schoolId, recipientId, isRead]) // Optimized for unread count
+  @@index([schoolId, recipientId, createdAt, isRead]) // Composite for filtered inbox
+  @@index([entityType, entityId]) // For auditing/cascading
+  @@index([type])
+  @@index([expiresAt]) // For cleanup jobs
+}
+
+model NotificationPreference {
+  id               String  @id @default(uuid())
+  userId           String
+  notificationType String // e.g., ASSIGNMENT_PUBLISHED or Category name
+  enabled          Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, notificationType])
+}
+
+model NotificationTemplate {
+  id               String  @id @default(uuid())
+  schoolId         String? // Optional: Null means system-wide default
+  notificationType String  @unique // e.g., ASSIGNMENT_PUBLISHED
+  titleTemplate    String
+  bodyTemplate     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OutboxEvent {
+  id            String @id @default(uuid())
+  eventId       String @unique // Globally unique for idempotency
+  schoolId      String
+  eventType     String // e.g., ASSIGNMENT_PUBLISHED
+  aggregateType String
+  aggregateId   String
+  payload       Json
+
+  status    OutboxEventStatus @default(PENDING)
+  attempts  Int               @default(0)
+  lastError String?           @db.Text
+
+  availableAt DateTime  @default(now())
+  processedAt DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, availableAt]) // Optimized for background worker polling
+  @@index([schoolId, eventType])
 }
